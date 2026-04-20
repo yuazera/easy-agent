@@ -3,6 +3,7 @@
 ## 快照策略
 
 - `0.3.5` 版本发布的是 2026 年 4 月 14 日刷新后的 benchmark、public-eval、Python verification 与 real-network 快照。
+- 最新一轮未发布验证发生在 2026 年 4 月 20 日：保留 4 月 14 日的 benchmark 与 public-eval headline 分数快照，同时刷新 Python verification、live provider compatibility 与 real-network 套件。
 - 仓库公开文档只保留方法说明与分数，不暴露机器本地协作日志。
 
 ## Benchmark 快照
@@ -64,32 +65,47 @@
 - 这次发布保持了 repo-pinned BFCL web-search 子集全绿，同时把 search/contents 的来源类型从 headline 分数里独立暴露出来。
 - 在这台机器上的 release refresh 中，BFCL web-search 刷新是通过 replay-backed evidence 完成的，而不是 live SerpApi 结果；这个事实已经写进诊断字段，而不是被简单的 pass 掩盖掉。
 
+## Provider Compatibility Live Verification
+
+这个矩阵对应的是 2026 年 4 月 20 日最新的 live 验证结果，和 README 中保留的 4 月 14 日 benchmark/public-eval headline 分数快照分开维护。
+
+| Target | 状态 | 说明 |
+| --- | --- | --- |
+| openai_live | passed | 必跑的 DeepSeek/OpenAI-compatible 基线在 `chat_completions` 上通过，strict-schema、`tool_choice: none`、required-tool 与 forced-tool 检查全部通过。 |
+| anthropic_live | skipped | 可选 target；这轮验证中本地没有提供 `ANTHROPIC_API_KEY`。 |
+| gemini_live | skipped | 可选 target；这轮验证中本地没有提供 `GEMINI_API_KEY`。 |
+
+兼容性说明：
+
+- 对于非 OpenAI 官方的 OpenAI-compatible provider，`single_tool_call_control` 现在会被标成 `best_effort`，而不是在 provider 暴露字段但运行时未严格执行时把整行错误地判成失败。
+- BFCL web-search 查询参数现在支持 `x-easy-agent-normalizer: web_search_query`，可以在评分前归一化包装语，但不会放松精确答案校验。
+
 ## Real-Network 快照
 
-最新快照时间：`2026-04-14T05:58:34Z`
+最新快照时间：`2026-04-20T09:27:57Z`
 
 | 测试集 | 分数 | 耗时（秒） | 说明 |
 | --- | ---: | ---: | --- |
-| real_network.cross_process_federation | 100.0 | 1.6871 | well-known discovery 与 send/poll federation |
-| real_network.live_model_federation_roundtrip | 100.0 | 11.7853 | 通过本地 A2A surface 的 loopback federation |
-| real_network.disconnect_retry_chaos | 100.0 | 10.4526 | callback retry 与 signed webhook delivery |
-| real_network.duplicate_delivery_replay_resilience | 100.0 | 6.3195 | replay-safe callback 与 durable task events |
-| real_network.workbench_reuse_process | 100.0 | 3.1016 | process workbench reuse |
-| real_network.workbench_reuse_container | 100.0 | 34.8270 | container warm-start 与 snapshot restore |
-| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 51.1865 | incremental container snapshot reuse |
-| real_network.workbench_reuse_microvm | 100.0 | 20.9947 | SSH-backed microVM reuse |
-| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 29.3842 | incremental microVM snapshot reuse |
-| real_network.replay_resume_failure_injection | 100.0 | 7.1407 | replay/resume failure injection |
+| real_network.cross_process_federation | 100.0 | 1.9705 | well-known discovery 与 send/poll federation |
+| real_network.live_model_federation_roundtrip | 100.0 | 12.1822 | 通过本地 A2A surface 的 loopback federation |
+| real_network.disconnect_retry_chaos | 100.0 | 6.7505 | callback retry、push notifications 与 signed webhook delivery |
+| real_network.duplicate_delivery_replay_resilience | 100.0 | 4.8176 | replay-safe callback 与 durable task events |
+| real_network.workbench_reuse_process | 100.0 | 2.0720 | process workbench reuse |
+| real_network.workbench_reuse_container | 100.0 | 35.3183 | container warm-start 与 snapshot restore |
+| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 57.5803 | incremental container snapshot reuse |
+| real_network.workbench_reuse_microvm | 100.0 | 25.5402 | SSH-backed microVM reuse |
+| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 36.1659 | incremental microVM snapshot reuse |
+| real_network.replay_resume_failure_injection | 100.0 | 8.0164 | replay/resume failure injection |
 
 Warm-start telemetry summary：
 
 | 指标 | 数值 |
 | --- | ---: |
 | telemetry.cache_hit_rate | 100.0 |
-| telemetry.container_warm_start_average_seconds | 5.7820 |
-| telemetry.microvm_warm_start_average_seconds | 9.1022 |
-| telemetry.snapshot_drift_ratio_average | 0.5162 |
-| telemetry.snapshot_drift_ratio_max | 0.6795 |
+| telemetry.container_warm_start_average_seconds | 6.5787 |
+| telemetry.microvm_warm_start_average_seconds | 10.7598 |
+| telemetry.snapshot_drift_ratio_average | 0.4047 |
+| telemetry.snapshot_drift_ratio_max | 0.5943 |
 
 ## 同类 Agent 项目对比
 
@@ -107,10 +123,11 @@ README 只保留高层摘要，本页保留公开证据映射。
 本轮只使用 Python-based verification。
 
 - 静态检查：`ruff` 与 `mypy`
-- 定向回归：provider adapters 与 web-search / BFCL evaluation，结果 `74 passed`
-- 全量 unit tests：`190 passed`
-- 全量 real integration：`6 passed`、`3 warnings`
-- 本次 release 同步刷新了 benchmark、public-eval 与 real-network 三类 artifact
-- 这轮 real integration 在沙箱外重跑，用来重新验证 live model/network 与 MCP-backed 路径
+- 定向回归：provider compatibility、config validation、guardrails 与 BFCL evaluation，结果 `89 passed`
+- 全量 unit tests：`196 passed`
+- 定向 live provider compatibility 回归：`1 passed`
+- 全量 real integration：`7 passed`、`2 warnings`
+- 保留的 benchmark 与 public-eval headline 分数仍指向 4 月 14 日发布快照，而 real-network artifact 与 live provider compatibility 证据在 4 月 20 日重新刷新
+- 剩余 warning 仍然是 Windows asyncio subprocess cleanup 的已知问题，不属于功能失败
 
 机器本地的完整执行日志不进入仓库公开文档。

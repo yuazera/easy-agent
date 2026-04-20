@@ -56,7 +56,7 @@ Most agent projects move quickly from "call a model" to "ship an application". T
 - Session memory, checkpoints, replay, branchable resume, and approval-aware recovery.
 - Guardrails, schema-aware tool validation, runtime event streaming, and persistent traces.
 - A2A-style remote federation with durable task state and signed callback verification.
-- Public evaluation helpers for benchmark, BFCL, tau2 mock, provider-schema compatibility, and real-network regression tracking.
+- Public evaluation helpers for benchmark, BFCL, tau2 mock, live provider-compatibility matrices, and real-network regression tracking.
 
 ## Human Loop, Replay, and MCP
 
@@ -130,7 +130,7 @@ The worker loop persists artifacts and checkpoints so long-running tasks can con
 ## Protocol and Tool Model
 
 - Model protocols: OpenAI-compatible chat-completions or Responses API payload normalization, Anthropic-style payloads, and Gemini-style payload normalization.
-- Tool calling: strict schema transport, nullable/optional modeling, validation-repair loops, provider-neutral tool-choice controls, and provider-schema compatibility telemetry.
+- Tool calling: strict schema transport, nullable/optional modeling, validation-repair loops, provider-neutral tool-choice controls, and explicit enforced-versus-best-effort provider compatibility telemetry.
 - Web-search eval hardening: SerpApi `/search.json`, grounded source ledgers, cache-first contents reuse, replay-backed contents fallback, raw official BFCL manifest normalization, and single-call regression guards.
 
 Provider behavior details and structured-output notes live in [reference/en/next-reinforcement.md](./reference/en/next-reinforcement.md).
@@ -179,7 +179,7 @@ Artifact details are documented in [reference/en/usage-guide.md](./reference/en/
 
 ## Verification
 
-The latest published patch is `0.3.5`. This release refreshes the benchmark, public-eval, and real-network snapshots on April 14, 2026, while extending the runtime with grounded web-search source ledgers, cache-first grounded contents recovery, and stricter Responses or structured-output regression coverage. Methodology notes, public comparison rows, and detailed matrices live in [reference/en/test-results.md](./reference/en/test-results.md).
+The latest published patch remains `0.3.5`. The retained benchmark and headline public-eval score snapshot is still the April 14, 2026 release baseline, while the latest Python verification refresh on April 20, 2026 revalidated the live provider-compatibility matrix and real-network suite without changing that retained score baseline. Methodology notes, public comparison rows, and detailed matrices live in [reference/en/test-results.md](./reference/en/test-results.md).
 
 ### Score Summary
 
@@ -191,7 +191,7 @@ The latest published patch is `0.3.5`. This release refreshes the benchmark, pub
 
 ## Real Network Test Set Results
 
-The real-network matrix is reported as score-only in this README. Durations, telemetry, warm-start budgets, and snapshot-drift detail are tracked in [reference/en/test-results.md](./reference/en/test-results.md).
+The real-network matrix is reported as score-only in this README. The score row below was revalidated on April 20, 2026, while durations, telemetry, warm-start budgets, and snapshot-drift detail are tracked in [reference/en/test-results.md](./reference/en/test-results.md).
 
 | Test Set | Score |
 | --- | ---: |
@@ -201,8 +201,9 @@ The real-network matrix is reported as score-only in this README. Durations, tel
 
 The next reinforcement track is documented in full at [reference/en/next-reinforcement.md](./reference/en/next-reinforcement.md). The near-term focus remains:
 
-- turning the shipped chat-completions and Responses API parity into live provider-specific compatibility evidence
+- widening the shipped live provider-compatibility matrix beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini evidence when credentials are present
 - extending BFCL web-search from grounded replay safety toward richer source-ledger, source-aware, and multihop official coverage
+- expanding live `/responses` compatibility coverage where OpenAI-compatible providers actually expose it, while keeping single-tool enforcement explicitly labeled as best effort when providers do not honor it strictly
 - deepening MCP notification parity around resource updates, prompt-detail refresh, and template diff telemetry
 
 ## Design References

@@ -100,6 +100,32 @@ evaluation:
       selection_mode: manifest_order
       max_cases:
       max_cases_per_suite:
+    provider_compatibility:
+      enabled: true
+      targets:
+        - name: openai_live
+          provider: deepseek
+          protocol: openai
+          model: deepseek-chat
+          base_url: https://api.deepseek.com
+          api_key_env: DEEPSEEK_API_KEY
+          openai_api_styles:
+            - chat_completions
+          optional: false
+        - name: anthropic_live
+          provider: anthropic
+          protocol: anthropic
+          model: claude-3-5-sonnet-latest
+          base_url: https://api.anthropic.com/v1
+          api_key_env: ANTHROPIC_API_KEY
+          optional: true
+        - name: gemini_live
+          provider: gemini
+          protocol: gemini
+          model: gemini-2.5-flash
+          base_url: https://generativelanguage.googleapis.com/v1beta
+          api_key_env: GEMINI_API_KEY
+          optional: true
   real_network:
     # Persist history so warm-start latency and snapshot drift can be compared across runs.
     history_path: .easy-agent/real-network-history.jsonl
@@ -138,3 +164,4 @@ security:
       - DEEPSEEK_API_KEY
     working_root: .
     windows_sandbox_fallback: process
+

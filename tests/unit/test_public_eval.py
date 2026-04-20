@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 import respx
 
+import agent_runtime.public_eval as public_eval_module
+from agent_common.models import AssistantResponse, Protocol, ToolCall
 from agent_config.app import AppConfig
 from agent_runtime.public_eval import (
     PublicEvalRecord,
@@ -27,6 +30,7 @@ from agent_runtime.public_eval import (
     _load_public_eval_inputs,
     _normalize_schema,
     _normalize_serpapi_search_results,
+    _provider_live_matrix,
     _provider_schema_matrix,
     _record_web_search_usage,
     _restore_checkpoint_records,
@@ -1520,3 +1524,184 @@ def test_load_official_full_v4_inputs_reads_manifest_path(tmp_path: Path) -> Non
 
     assert bfcl_cases[0]['suite'] == 'memory'
     assert tau_cases
+
+
+def test_provider_schema_matrix_exposes_classification_and_evidence_fields() -> None:
+    matrix = _provider_schema_matrix()
+
+    assert matrix['openai_compatible']['features']['strict_flag']['classification'] == 'enforced'
+    assert matrix['openai_compatible']['features']['strict_flag']['evidence'] == 'static'
+    assert matrix['openai_compatible']['features']['single_tool_call_control']['classification'] == 'best_effort'
+    assert matrix['anthropic']['features']['additional_properties_false']['classification'] == 'normalized'
+    assert matrix['gemini']['features']['single_tool_call_control']['classification'] == 'best_effort'
+
+
+def test_provider_live_matrix_skips_missing_optional_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    config = AppConfig.model_validate(
+        {
+            'graph': {'entrypoint': 'coordinator', 'agents': [{'name': 'coordinator'}], 'nodes': []},
+            'evaluation': {
+                'public_eval': {
+                    'provider_compatibility': {
+                        'enabled': True,
+                        'targets': [
+                            {
+                                'name': 'anthropic_live',
+                                'provider': 'anthropic',
+                                'protocol': 'anthropic',
+                                'model': 'claude-3-5-sonnet-latest',
+                                'base_url': 'https://api.anthropic.com/v1',
+                                'api_key_env': 'ANTHROPIC_API_KEY',
+                                'optional': True,
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+    )
+
+    matrix = _provider_live_matrix(config)
+
+    assert matrix['anthropic_live']['status'] == 'skipped'
+    assert matrix['anthropic_live']['reason'] == 'missing ANTHROPIC_API_KEY'
+
+
+def test_provider_live_matrix_uses_fake_client_for_openai_surface(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeHttpModelClient:
+        def __init__(self, config: Any, client: object | None = None) -> None:
+            self.config = config
+            self._client = client
+
+        async def complete(self, messages: list[object], tools: list[object]) -> AssistantResponse:
+            del messages
+            mode = self.config.function_calling.mode
+            if mode == 'none':
+                return AssistantResponse(text='pong', tool_calls=[], protocol=Protocol.OPENAI, raw={})
+            arguments = {'choice': 'alpha', 'params': ['one']}
+            if mode == 'required' and not self.config.function_calling.parallel_tool_calls and len(tools) > 1:
+                return AssistantResponse(
+                    text='',
+                    tool_calls=[ToolCall(id='call_1', name='schema_probe', arguments=arguments)],
+                    protocol=Protocol.OPENAI,
+                    raw={},
+                )
+            return AssistantResponse(
+                text='',
+                tool_calls=[ToolCall(id='call_1', name='schema_probe', arguments=arguments)],
+                protocol=Protocol.OPENAI,
+                raw={},
+            )
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(public_eval_module, 'HttpModelClient', FakeHttpModelClient)
+    monkeypatch.setenv('DEEPSEEK_API_KEY', 'test-key')
+    config = AppConfig.model_validate(
+        {
+            'graph': {'entrypoint': 'coordinator', 'agents': [{'name': 'coordinator'}], 'nodes': []},
+            'evaluation': {
+                'public_eval': {
+                    'provider_compatibility': {
+                        'enabled': True,
+                        'targets': [
+                            {
+                                'name': 'openai_live',
+                                'provider': 'deepseek',
+                                'protocol': 'openai',
+                                'model': 'deepseek-chat',
+                                'base_url': 'https://api.deepseek.com',
+                                'api_key_env': 'DEEPSEEK_API_KEY',
+                                'optional': False,
+                                'openai_api_styles': ['chat_completions'],
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+    )
+
+    matrix = _provider_live_matrix(config)
+
+    assert matrix['openai_live']['status'] == 'passed'
+    assert matrix['openai_live']['surfaces']['chat_completions']['checks']['tool_choice_none']['status'] == 'passed'
+    assert matrix['openai_live']['surfaces']['chat_completions']['checks']['forced_tool_choice']['status'] == 'passed'
+
+
+def test_provider_live_matrix_treats_openai_compatible_single_call_as_best_effort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeHttpModelClient:
+        def __init__(self, config: Any, client: object | None = None) -> None:
+            self.config = config
+            self._client = client
+
+        async def complete(self, messages: list[object], tools: list[object]) -> AssistantResponse:
+            del messages
+            mode = self.config.function_calling.mode
+            if mode == 'none':
+                return AssistantResponse(text='pong', tool_calls=[], protocol=Protocol.OPENAI, raw={})
+            arguments = {'choice': 'alpha', 'params': ['one']}
+            if mode == 'required' and not self.config.function_calling.parallel_tool_calls and len(tools) > 1:
+                return AssistantResponse(
+                    text='',
+                    tool_calls=[
+                        ToolCall(id='call_1', name='schema_probe', arguments=arguments),
+                        ToolCall(id='call_2', name='secondary_probe', arguments={'value': 'extra'}),
+                    ],
+                    protocol=Protocol.OPENAI,
+                    raw={},
+                )
+            return AssistantResponse(
+                text='',
+                tool_calls=[ToolCall(id='call_1', name='schema_probe', arguments=arguments)],
+                protocol=Protocol.OPENAI,
+                raw={},
+            )
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(public_eval_module, 'HttpModelClient', FakeHttpModelClient)
+    monkeypatch.setenv('DEEPSEEK_API_KEY', 'test-key')
+    config = AppConfig.model_validate(
+        {
+            'graph': {'entrypoint': 'coordinator', 'agents': [{'name': 'coordinator'}], 'nodes': []},
+            'evaluation': {
+                'public_eval': {
+                    'provider_compatibility': {
+                        'enabled': True,
+                        'targets': [
+                            {
+                                'name': 'openai_live',
+                                'provider': 'deepseek',
+                                'protocol': 'openai',
+                                'model': 'deepseek-chat',
+                                'base_url': 'https://api.deepseek.com',
+                                'api_key_env': 'DEEPSEEK_API_KEY',
+                                'optional': False,
+                                'openai_api_styles': ['chat_completions'],
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+    )
+
+    matrix = _provider_live_matrix(config)
+
+    assert matrix['openai_live']['status'] == 'passed'
+    assert (
+        matrix['openai_live']['surfaces']['chat_completions']['checks']['single_tool_call_control']['status']
+        == 'failed'
+    )
+    assert (
+        matrix['openai_live']['surfaces']['chat_completions']['checks']['single_tool_call_control']['classification']
+        == 'best_effort'
+    )
+
+

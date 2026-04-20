@@ -92,6 +92,22 @@ Selection notes:
 - `category_allowlist` filters on normalized public categories such as `agentic`, `multihop`, `memory`, and `web_search`.
 - `max_cases_per_suite` caps one normalized suite before the final `max_cases` limit is applied.
 
+## Provider Compatibility Live Matrix
+
+Use `evaluation.public_eval.provider_compatibility` to run live provider checks without rewriting the main public-eval profile:
+
+- `enabled` turns the matrix on or off.
+- `targets[*].name` gives each live target a stable report key.
+- `targets[*].protocol` selects the adapter surface: `openai`, `anthropic`, or `gemini`.
+- `targets[*].openai_api_styles` lets OpenAI-compatible targets opt into `chat_completions`, `responses`, or both.
+- `targets[*].optional` keeps missing credentials visible as `skipped` instead of silently removing the target.
+
+Current interpretation rules:
+
+- required checks such as strict schema requests, `tool_choice: none`, required-tool mode, and forced-tool mode remain release-blocking
+- `single_tool_call_control` is explicitly classified as `best_effort` for non-OpenAI OpenAI-compatible providers, because some providers expose the field but do not always enforce it at runtime
+- the resulting matrix is designed to explain what is normalized, what is enforced, and what was only observed on a best-effort basis
+
 ## Web Search Eval Notes
 
 - Repo-pinned BFCL web-search keeps SerpApi `/search.json` as the explicit search transport.
@@ -105,6 +121,7 @@ Selection notes:
   - cache or network or replay content-source usage
   - grounded retry counts
   - search and contents backend mix
+- BFCL web-search tool schemas can opt into `x-easy-agent-normalizer: web_search_query` so scoring stays strict while wrapper phrases such as "search the web for ..." are normalized before argument comparison.
 - This keeps the repo-pinned BFCL web-search slice green while exposing when a local refresh relied on replay instead of live search.
 
 ## MCP Catalog Notes

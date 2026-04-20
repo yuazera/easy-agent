@@ -3,6 +3,7 @@
 ## Snapshot Policy
 
 - Release `0.3.5` publishes benchmark, public-eval, Python verification, and real-network snapshots refreshed on April 14, 2026.
+- The latest unreleased verification refresh on April 20, 2026 keeps the April 14 benchmark and headline public-eval score snapshot, while refreshing Python verification, live provider compatibility, and the real-network suite.
 - Public docs in this repository intentionally expose methodology and scores only; local collaboration logs are not part of the repository-facing surface.
 
 ## Benchmark Snapshot
@@ -64,32 +65,47 @@ Interpretation notes:
 - This release keeps the repo-pinned BFCL web-search slice green while exposing the search or contents source mix separately from the headline pass rate.
 - On this machine, the release refresh completed through replay-backed BFCL web-search evidence rather than live SerpApi results, which is reflected in the published diagnostics instead of being hidden behind a simple pass.
 
+## Provider Compatibility Live Verification
+
+This matrix is the latest April 20, 2026 live verification pass, separate from the retained April 14 benchmark and headline public-eval score snapshot.
+
+| Target | Status | Notes |
+| --- | --- | --- |
+| openai_live | passed | Required DeepSeek/OpenAI-compatible baseline passed on `chat_completions`; strict-schema, `tool_choice: none`, required-tool, and forced-tool checks all passed. |
+| anthropic_live | skipped | Optional target; no local `ANTHROPIC_API_KEY` was present in this verification pass. |
+| gemini_live | skipped | Optional target; no local `GEMINI_API_KEY` was present in this verification pass. |
+
+Compatibility notes:
+
+- `single_tool_call_control` is now reported as `best_effort` for non-OpenAI OpenAI-compatible providers instead of incorrectly failing the whole provider row when the field is exposed but not enforced strictly at runtime.
+- BFCL web-search query arguments now support the `x-easy-agent-normalizer: web_search_query` path so wrapper text can be normalized before scoring without weakening exact answer checks.
+
 ## Real-Network Snapshot
 
-Latest generated snapshot timestamp: `2026-04-14T05:58:34Z`
+Latest generated snapshot timestamp: `2026-04-20T09:27:57Z`
 
 | Test Set | Score | Duration (s) | Notes |
 | --- | ---: | ---: | --- |
-| real_network.cross_process_federation | 100.0 | 1.6871 | well-known discovery and send/poll federation |
-| real_network.live_model_federation_roundtrip | 100.0 | 11.7853 | loopback federation through the local A2A surface |
-| real_network.disconnect_retry_chaos | 100.0 | 10.4526 | callback retry and signed webhook delivery |
-| real_network.duplicate_delivery_replay_resilience | 100.0 | 6.3195 | replay-safe callback and durable task events |
-| real_network.workbench_reuse_process | 100.0 | 3.1016 | process workbench reuse |
-| real_network.workbench_reuse_container | 100.0 | 34.8270 | container warm-start and snapshot restore |
-| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 51.1865 | incremental container snapshot reuse |
-| real_network.workbench_reuse_microvm | 100.0 | 20.9947 | SSH-backed microVM reuse |
-| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 29.3842 | incremental microVM snapshot reuse |
-| real_network.replay_resume_failure_injection | 100.0 | 7.1407 | replay/resume failure injection |
+| real_network.cross_process_federation | 100.0 | 1.9705 | well-known discovery and send/poll federation |
+| real_network.live_model_federation_roundtrip | 100.0 | 12.1822 | loopback federation through the local A2A surface |
+| real_network.disconnect_retry_chaos | 100.0 | 6.7505 | callback retry, push notifications, and signed webhook delivery |
+| real_network.duplicate_delivery_replay_resilience | 100.0 | 4.8176 | replay-safe callback and durable task events |
+| real_network.workbench_reuse_process | 100.0 | 2.0720 | process workbench reuse |
+| real_network.workbench_reuse_container | 100.0 | 35.3183 | container warm-start and snapshot restore |
+| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 57.5803 | incremental container snapshot reuse |
+| real_network.workbench_reuse_microvm | 100.0 | 25.5402 | SSH-backed microVM reuse |
+| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 36.1659 | incremental microVM snapshot reuse |
+| real_network.replay_resume_failure_injection | 100.0 | 8.0164 | replay/resume failure injection |
 
 Warm-start telemetry summary:
 
 | Metric | Value |
 | --- | ---: |
 | telemetry.cache_hit_rate | 100.0 |
-| telemetry.container_warm_start_average_seconds | 5.7820 |
-| telemetry.microvm_warm_start_average_seconds | 9.1022 |
-| telemetry.snapshot_drift_ratio_average | 0.5162 |
-| telemetry.snapshot_drift_ratio_max | 0.6795 |
+| telemetry.container_warm_start_average_seconds | 6.5787 |
+| telemetry.microvm_warm_start_average_seconds | 10.7598 |
+| telemetry.snapshot_drift_ratio_average | 0.4047 |
+| telemetry.snapshot_drift_ratio_max | 0.5943 |
 
 ## Similar Agent Project Comparison
 
@@ -107,10 +123,11 @@ The README keeps the comparison high level. This page keeps the public evidence 
 This round uses Python-based verification only.
 
 - Static checks: `ruff` and `mypy`
-- Targeted regressions around provider adapters and web-search or BFCL evaluation: `74 passed`
-- Full unit coverage: `190 passed`
-- Full real integration coverage: `6 passed`, `3 warnings`
-- Live benchmark, public-eval, and real-network artifacts were refreshed for this release
-- Real integration reran outside the sandbox so live model/network and MCP-backed paths could be revalidated end to end
+- Targeted regressions around provider compatibility, config validation, guardrails, and BFCL evaluation: `89 passed`
+- Full unit coverage: `196 passed`
+- Targeted live provider-compatibility regression: `1 passed`
+- Full real integration coverage: `7 passed`, `2 warnings`
+- The retained benchmark and headline public-eval scores still point at the April 14 release snapshot, while the real-network artifact and live provider-compatibility evidence were refreshed on April 20
+- The remaining warnings are known Windows asyncio subprocess cleanup warnings after successful completion
 
 Exact machine-local execution logs stay outside the repository-facing documentation surface.

@@ -9,7 +9,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-No unreleased changes yet.
+- Added live provider-compatibility target config under `evaluation.public_eval.provider_compatibility` so public eval can check required and optional provider surfaces explicitly.
+- Added BFCL web-search query normalization opt-in through `x-easy-agent-normalizer: web_search_query` so wrapper phrasing can be removed before argument comparison.
+
+### Changed
+
+- Reworked the public-eval provider compatibility report so live matrices now distinguish enforced checks from best-effort checks instead of failing an entire OpenAI-compatible provider row on single-call control drift alone.
+- Updated the bilingual README pair and all published `reference/` pages to document:
+  - the live provider-compatibility matrix
+  - the April 20, 2026 Python verification refresh
+  - the refreshed April 20, 2026 real-network snapshot
+  - the current next-step reinforcement focus for provider compatibility and BFCL web-search hardening
+
+### Verified
+
+- `.\.venv\Scripts\python.exe -m ruff check src tests scripts`
+- `.\.venv\Scripts\python.exe -m mypy src tests scripts`
+- `.\.venv\Scripts\python.exe -m pytest tests/unit/test_public_eval.py tests/unit/test_config.py tests/unit/test_guardrails.py -q --basetemp=%TEMP%\easy-agent-pytest\unit-provider-live-fix` with `89 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests/unit -q --basetemp=%TEMP%\easy-agent-pytest\unit-full-20260420-provider-live-fix` with `196 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests/integration/test_public_eval_real.py::test_public_eval_provider_live_matrix_runs_with_live_model -q --basetemp=%TEMP%\easy-agent-pytest\integration-provider-live-fix` with `1 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests/integration -m real -q --basetemp=%TEMP%\easy-agent-pytest\integration-full-20260420-provider-live-fix-rerun` with `7 passed`, `2 warnings`
 
 ## [0.3.5] - 2026-04-14
 

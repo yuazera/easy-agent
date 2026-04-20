@@ -4,7 +4,7 @@
 
 ## 当前重点
 
-- 把已交付的 OpenAI-compatible chat-completions / Responses API 双路径对齐，继续推进成 live provider-specific 兼容证据。
+- 把已经交付的 live provider-specific 兼容证据继续扩展到必跑的 DeepSeek/OpenAI-compatible 基线之外，在有凭据时补齐 Anthropic 与 Gemini 覆盖。
 - 把 raw official BFCL v4 归一化路径继续推进到更广的 agentic 与 multihop 覆盖，并补齐更清晰的官方分类诊断。
 - 在不随意扩大 model-facing runtime surface 的前提下，继续深化 MCP 通知对齐，包括 resource updates、prompt-detail refresh 与 template diff telemetry。
 
@@ -19,6 +19,7 @@
 - 继续把 `web.contents` 对齐到更接近 BFCL v4 的 `truncate` / `markdown` / `raw` 内容模式，让答案抽取可以在简洁文本、可读文档文本与 markup-sensitive 载荷之间切换。
 - 当 grounded page fetch 失败时，先在 grounded search set 内重试，再退回 replay-backed contents；不要静默扩大 URL 边界。
 - 持续暴露每个 case 到底用了 cache、network 还是 replay-backed contents，这样长期跟踪 BFCL web-search 质量时，就能把 headline pass/fail 和来源质量拆开看。
+- 继续把查询归一化限定在去包装语这一步，例如通过 `x-easy-agent-normalizer: web_search_query`，这样分数提升来自更好的 grounding，而不是更松的匹配规则。
 - 让最终答案同时兼容简洁纯文本或 `{"answer": ..., "context": ...}` 这样的结构化载荷，这样 answer scoring 可以继续严格，而不是靠放松 evaluator 来提分。
 - 对 memory read/delete 这类 case，继续保持 tool-result truth 校验，而不是只看 arguments 命中。
 
@@ -69,11 +70,14 @@
 - 当 `required` 或 `force` 模式在过滤后没有可用工具时，显式失败而不是静默降级
 - OpenAI-compatible Responses payload 对齐
 - OpenAI-compatible Responses response parsing 对齐
+- 针对 DeepSeek/OpenAI-compatible 的 live 验证，覆盖 strict-schema、no-tool、required-tool 与 forced-tool 流程
+- 当非 OpenAI 官方的 OpenAI-compatible provider 暴露 single-tool 控制字段但运行时不严格执行时，显式标记为 `best_effort`
 
 在当前基线之上的更好发展方向：
 
-- 为当前 strict function-calling 兼容矩阵增加 live provider-specific 回归，而不是只依赖静态 payload 检查
+- 在有凭据时把 live provider-specific 回归继续扩展到 Anthropic、Gemini，以及 provider 真正支持时的 OpenAI-compatible `/responses` surface
 - 继续把 provider capability matrix 写清楚哪些能力是归一化实现、哪些是显式约束、哪些仍然依赖 provider-specific best effort
+- 在不放松 BFCL 单调用回归约束的前提下，继续缩小 OpenAI-compatible provider 在串行工具调用上的 best-effort 缺口
 - 等当前 live matrix 稳定之后，再把同样的显式矩阵方法扩展到未来的 realtime 或 streaming tool surface
 
 参考：

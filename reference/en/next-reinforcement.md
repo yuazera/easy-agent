@@ -4,7 +4,7 @@ This roadmap starts from the published `0.3.5` baseline.
 
 ## Immediate Focus
 
-- Turn the shipped OpenAI-compatible chat-completions and Responses API parity into live provider-specific compatibility evidence.
+- Widen the shipped live provider-specific compatibility evidence beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini coverage when credentials are present.
 - Extend the raw official BFCL v4 normalization path into wider agentic and multihop coverage with clearer official-category diagnostics.
 - Deepen MCP notification parity around resource updates, prompt-detail refresh, and template diff telemetry without widening the model-facing runtime surface.
 
@@ -19,6 +19,7 @@ This roadmap starts from the published `0.3.5` baseline.
 - Keep `web.contents` aligned to BFCL v4-style `truncate` / `markdown` / `raw` content modes so answer extraction can choose between concise text, readable document text, and markup-sensitive payloads.
 - When a grounded page fetch fails, retry within the grounded search set before falling back to replay-backed contents; do not silently widen the URL boundary.
 - Keep exposing whether a case used cache, network, or replay-backed contents so long-term BFCL web-search quality can be tracked separately from headline pass or fail.
+- Keep using query normalization only as a wrapper-removal step, for example through `x-easy-agent-normalizer: web_search_query`, so score improvements come from better grounding instead of looser matching.
 - Extend the final-answer path to stay compatible with either concise plain text or a structured `{"answer": ..., "context": ...}` payload so answer scoring remains strict without becoming brittle.
 - Keep memory semantics explicit by validating tool-result truth for read/delete style cases instead of relying on argument matches alone.
 
@@ -69,11 +70,14 @@ The shipped regression floor now covers:
 - explicit failure when `required` or `force` mode ends up with no selected tool after filtering
 - OpenAI-compatible Responses payload parity
 - OpenAI-compatible Responses response parsing parity
+- live DeepSeek/OpenAI-compatible verification for strict-schema, no-tool, required-tool, and forced-tool flows
+- explicit `best_effort` classification for non-OpenAI OpenAI-compatible single-tool control when the field is exposed but not enforced strictly at runtime
 
 Better next directions after the current baseline:
 
-- add live provider-specific compatibility runs for the current strict function-calling matrix instead of relying only on static payload inspection
+- expand live provider-specific compatibility runs to optional Anthropic and Gemini targets when credentials are available, plus OpenAI-compatible `/responses` surfaces where providers actually support them
 - keep the provider capability matrix explicit about what is normalized, what is enforced, and what still depends on provider-specific best effort
+- reduce the remaining best-effort gap around serialized tool calls on OpenAI-compatible providers without weakening BFCL single-call regression checks
 - extend the same explicit matrix discipline into future non-OpenAI-compatible realtime or streaming tool surfaces only after the current live matrix is stable
 
 Reference:

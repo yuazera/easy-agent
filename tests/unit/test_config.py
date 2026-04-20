@@ -484,3 +484,39 @@ def test_federation_remote_auth_validation(auth_config: dict[str, object], messa
                 },
             }
         )
+
+def test_load_config_reads_provider_compatibility_targets() -> None:
+    config = AppConfig.model_validate(
+        {
+            'graph': {
+                'entrypoint': 'agent-a',
+                'agents': [{'name': 'agent-a'}],
+                'nodes': [],
+            },
+            'evaluation': {
+                'public_eval': {
+                    'provider_compatibility': {
+                        'enabled': True,
+                        'targets': [
+                            {
+                                'name': 'openai_live',
+                                'provider': 'deepseek',
+                                'protocol': 'openai',
+                                'model': 'deepseek-chat',
+                                'base_url': 'https://api.deepseek.com',
+                                'api_key_env': 'DEEPSEEK_API_KEY',
+                                'openai_api_styles': ['chat_completions', 'responses'],
+                                'optional': False,
+                            }
+                        ],
+                    }
+                }
+            },
+        }
+    )
+
+    provider_compat = config.evaluation.public_eval.provider_compatibility
+    assert provider_compat.enabled is True
+    assert provider_compat.targets[0].name == 'openai_live'
+    assert provider_compat.targets[0].openai_api_styles == ['chat_completions', 'responses']
+    assert provider_compat.targets[0].optional is False

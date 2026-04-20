@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -551,12 +551,45 @@ class PublicEvalOfficialDatasetConfig(BaseModel):
     max_cases_per_suite: int | None = None
 
 
+class ProviderCompatibilityTargetConfig(BaseModel):
+    name: str
+    provider: str
+    protocol: Protocol = Protocol.AUTO
+    model: str
+    base_url: str
+    api_key_env: str
+    openai_api_styles: list[Literal['chat_completions', 'responses']] = Field(
+        default_factory=lambda: cast(list[Literal['chat_completions', 'responses']], ['chat_completions'])
+    )
+    optional: bool = True
+    extra_headers: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode='after')
+    def validate_target(self) -> ProviderCompatibilityTargetConfig:
+        if not self.openai_api_styles:
+            raise ValueError('provider compatibility target requires at least one openai_api_style')
+        return self
+
+
+class ProviderCompatibilityConfig(BaseModel):
+    enabled: bool = False
+    targets: list[ProviderCompatibilityTargetConfig] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def validate_targets(self) -> ProviderCompatibilityConfig:
+        names = [target.name for target in self.targets]
+        if len(names) != len(set(names)):
+            raise ValueError('provider compatibility target names must be unique')
+        return self
+
+
 class PublicEvalConfig(BaseModel):
     profile: Literal['subset', 'full_v4', 'official_full_v4'] = 'full_v4'
     bfcl_version: str = 'v4'
     enable_full_bfcl: bool = True
     web_search: PublicEvalWebSearchConfig = Field(default_factory=PublicEvalWebSearchConfig)
     official_dataset: PublicEvalOfficialDatasetConfig = Field(default_factory=PublicEvalOfficialDatasetConfig)
+    provider_compatibility: ProviderCompatibilityConfig = Field(default_factory=ProviderCompatibilityConfig)
 
 
 class RealNetworkLatencyBudgetConfig(BaseModel):
@@ -747,4 +780,5 @@ def load_config(path: str | Path) -> AppConfig:
 
 
 load_local_env()
+
 

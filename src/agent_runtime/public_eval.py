@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import tempfile
 import time
@@ -16,7 +17,7 @@ import httpx
 from agent_common.models import ChatMessage, Protocol, ToolCall, ToolSpec
 from agent_common.schema_utils import normalize_json_schema
 from agent_config.app import AppConfig, ModelConfig, PublicEvalWebSearchConfig, load_config
-from agent_protocols.client import AnthropicAdapter, GeminiAdapter, OpenAIAdapter
+from agent_protocols.client import AnthropicAdapter, GeminiAdapter, HttpModelClient, OpenAIAdapter
 from agent_runtime.public_eval_web_search import (
     WebSearchQuotaExceeded,
 )
@@ -572,6 +573,10 @@ def _bfcl_system_prompt(case: dict[str, Any]) -> str:
     if str(case.get('suite') or '') == 'web_search':
         prompt += (
             ' For web-search title lookups, answer with the exact grounded page title only. '
+            'For web.search, put concise search keywords only into query; do not copy narration such as "search the web", '
+            '"look up", or "what is the exact page title" into the tool arguments. '
+            'If the user asks for official docs, preserve official in query. '
+            'Prefer a small grounded result set such as num_results=5 unless a narrower result count is clearly enough. '
             'If the user explicitly asks you to read the page contents or answer a detail that depends on page text rather than the title/snippet, '
             'first call web.search and then call web.contents only on grounded result ids or URLs from that search. '
             'Use web.contents mode=truncate for concise extraction, mode=markdown for readable document text, and mode=raw only when markup-sensitive text is explicitly needed. '
@@ -615,6 +620,27 @@ def _strict_normalize_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return normalize_json_schema(schema, drop_descriptions=True, strict=True)
 
 
+def _eval_tool_schema(original_name: str, schema: dict[str, Any], *, strict: bool) -> dict[str, Any]:
+    normalized = _strict_normalize_schema(schema) if strict else _normalize_schema(schema)
+    if original_name == 'web.search':
+        properties = cast(dict[str, Any], normalized.get('properties', {}))
+        query_schema = cast(dict[str, Any], properties.get('query', {}))
+        if query_schema:
+            query_schema['x-easy-agent-normalizer'] = 'web_search_query'
+    return normalized
+
+
+def _eval_tool_description(original_name: str, description: str) -> str:
+    if original_name == 'web.search':
+        return (
+            f'{description} '
+            'Set query to concise search keywords only. '
+            'Do not include wrappers like "search the web", "look up", or page-title questions in query. '
+            'When the user asks for official documentation, keep official in query.'
+        ).strip()
+    return description
+
+
 def _protocol_matrix_sample_schema(
     adapter: Any,
     provider: str,
@@ -643,7 +669,243 @@ def _protocol_matrix_sample_schema(
     return payload, cast(dict[str, Any], payload['tools'][0]['functionDeclarations'][0]['parameters'])
 
 
-def _provider_schema_matrix() -> dict[str, Any]:
+def _matrix_feature(
+    supported: bool,
+    observed: Any,
+    *,
+    classification: Literal['normalized', 'enforced', 'best_effort', 'not_applicable'],
+    notes: str,
+    evidence: Literal['static', 'live', 'skipped', 'not_run'] = 'static',
+) -> dict[str, Any]:
+    return {
+        'supported': supported,
+        'observed': observed,
+        'classification': classification,
+        'evidence': evidence,
+        'notes': notes,
+    }
+
+
+def _provider_key(protocol: Protocol) -> str:
+    if protocol is Protocol.OPENAI:
+        return 'openai_compatible'
+    if protocol is Protocol.ANTHROPIC:
+        return 'anthropic'
+    return 'gemini'
+
+
+def _provider_live_tools() -> list[ToolSpec]:
+    return [
+        ToolSpec(name='schema_probe', description='Return the requested structured arguments.', input_schema=_SCHEMA_MATRIX_SAMPLE),
+        ToolSpec(
+            name='secondary_probe',
+            description='Return a second structured call when explicitly required.',
+            input_schema={'type': 'object', 'properties': {'value': {'type': 'string'}}, 'required': ['value']},
+        ),
+    ]
+
+
+def _provider_live_messages(kind: str) -> list[ChatMessage]:
+    prompts = {
+        'strict_schema_request': (
+            'Use the schema_probe tool once. '
+            'Set items to [{"value": 7}], choice to "alpha", params to ["one"], amount to 3.5, and nickname to null.'
+        ),
+        'tool_choice_none': 'Reply with the single word pong and do not call any tool.',
+        'tool_choice_required': 'Call the schema_probe tool once with choice "alpha" and params ["one"].',
+        'forced_tool_choice': 'Call the schema_probe tool once with choice "alpha" and params ["one"].',
+        'single_tool_call_control': (
+            'If tool limits permit it, call schema_probe and secondary_probe in the same response. '
+            'Otherwise make only one valid tool call.'
+        ),
+    }
+    return [ChatMessage(role='user', content=prompts[kind])]
+
+
+async def _run_provider_live_check(
+    client: HttpModelClient,
+    *,
+    kind: str,
+    tools: list[ToolSpec],
+) -> dict[str, Any]:
+    response = await client.complete(_provider_live_messages(kind), tools)
+    tool_names = [item.name for item in response.tool_calls]
+    observed = {
+        'text': response.text,
+        'tool_names': tool_names,
+        'arguments': response.tool_calls[0].arguments if response.tool_calls else {},
+        'tool_call_count': len(response.tool_calls),
+    }
+    status = 'failed'
+    if kind == 'tool_choice_none':
+        status = 'passed' if not response.tool_calls else 'failed'
+    elif kind in {'strict_schema_request', 'tool_choice_required', 'forced_tool_choice'}:
+        status = 'passed' if tool_names[:1] == ['schema_probe'] else 'failed'
+    elif kind == 'single_tool_call_control':
+        status = 'passed' if len(response.tool_calls) <= 1 and tool_names[:1] in (['schema_probe'], ['secondary_probe'], []) else 'failed'
+    return {'status': status, 'observed': observed}
+
+
+def _provider_live_check_classification(config: ModelConfig, kind: str) -> Literal['enforced', 'best_effort', 'not_applicable']:
+    if kind == 'single_tool_call_control':
+        if config.protocol is Protocol.GEMINI:
+            return 'not_applicable'
+        if config.protocol is Protocol.OPENAI and config.provider.lower() != 'openai':
+            return 'best_effort'
+    return 'enforced'
+
+
+async def _run_provider_live_surface(config: ModelConfig) -> dict[str, Any]:
+    checks: dict[str, Any] = {}
+    tools = _provider_live_tools()
+    client = HttpModelClient(config)
+    try:
+        for kind, function_calling in (
+            ('strict_schema_request', {'mode': 'required'}),
+            ('tool_choice_none', {'mode': 'none'}),
+            ('tool_choice_required', {'mode': 'required'}),
+            ('forced_tool_choice', {'mode': 'force', 'forced_tool_name': 'schema_probe'}),
+        ):
+            live_config = config.model_copy(
+                update={
+                    'function_calling': config.function_calling.model_copy(update=function_calling),
+                }
+            )
+            surface_client = HttpModelClient(live_config, client=client._client)
+            checks[kind] = await _run_provider_live_check(surface_client, kind=kind, tools=tools[:1])
+        if config.protocol is not Protocol.GEMINI:
+            single_call_config = config.model_copy(
+                update={
+                    'function_calling': config.function_calling.model_copy(
+                        update={'mode': 'required', 'parallel_tool_calls': False}
+                    ),
+                }
+            )
+            surface_client = HttpModelClient(single_call_config, client=client._client)
+            checks['single_tool_call_control'] = await _run_provider_live_check(
+                surface_client,
+                kind='single_tool_call_control',
+                tools=tools,
+            )
+        else:
+            checks['single_tool_call_control'] = {
+                'status': 'skipped',
+                'observed': None,
+                'classification': _provider_live_check_classification(config, 'single_tool_call_control'),
+                'reason': 'provider does not expose an explicit single-call control field',
+            }
+    finally:
+        await client.aclose()
+    for kind, item in checks.items():
+        item.setdefault('classification', _provider_live_check_classification(config, kind))
+    blocking_statuses = [
+        cast(str, item.get('status', 'failed'))
+        for item in checks.values()
+        if item.get('classification') == 'enforced'
+    ]
+    surface_status = 'passed' if blocking_statuses and all(status in {'passed', 'skipped'} for status in blocking_statuses) else 'failed'
+    return {'status': surface_status, 'checks': checks}
+
+
+async def _run_provider_live_matrix_async(base_config: AppConfig) -> dict[str, Any]:
+    provider_config = base_config.evaluation.public_eval.provider_compatibility
+    if not provider_config.enabled:
+        return {}
+    matrix: dict[str, Any] = {}
+    for target in provider_config.targets:
+        provider_key = _provider_key(target.protocol)
+        api_key_env = str(target.api_key_env).strip()
+        if not api_key_env:
+            matrix[target.name] = {
+                'provider_key': provider_key,
+                'provider': target.provider,
+                'protocol': target.protocol.value,
+                'status': 'skipped',
+                'optional': target.optional,
+                'reason': 'missing api_key_env',
+                'surfaces': {},
+            }
+            continue
+        if not os.environ.get(api_key_env, '').strip():
+            matrix[target.name] = {
+                'provider_key': provider_key,
+                'provider': target.provider,
+                'protocol': target.protocol.value,
+                'status': 'skipped' if target.optional else 'failed',
+                'optional': target.optional,
+                'reason': f'missing {api_key_env}',
+                'surfaces': {},
+            }
+            continue
+        surfaces: dict[str, Any] = {}
+        statuses: list[str] = []
+        styles = target.openai_api_styles if target.protocol is Protocol.OPENAI else ['chat_completions']
+        for style in styles:
+            model_config = ModelConfig.model_validate(
+                {
+                    'provider': target.provider,
+                    'protocol': target.protocol,
+                    'model': target.model,
+                    'base_url': target.base_url,
+                    'api_key_env': target.api_key_env,
+                    'openai_api_style': style,
+                    'temperature': 0.0,
+                    'max_tokens': 256,
+                    'extra_headers': target.extra_headers,
+                    'function_calling': {'strict': True, 'parallel_tool_calls': True, 'mode': 'auto'},
+                }
+            )
+            surface_name = style if target.protocol is Protocol.OPENAI else 'default'
+            try:
+                surfaces[surface_name] = await _run_provider_live_surface(model_config)
+            except Exception as exc:
+                surfaces[surface_name] = {'status': 'failed', 'checks': {}, 'error': str(exc)}
+            statuses.append(str(cast(dict[str, Any], surfaces[surface_name]).get('status', 'failed')))
+        overall_status = 'passed' if statuses and all(status == 'passed' for status in statuses) else 'failed'
+        matrix[target.name] = {
+            'provider_key': provider_key,
+            'provider': target.provider,
+            'protocol': target.protocol.value,
+            'status': overall_status,
+            'optional': target.optional,
+            'surfaces': surfaces,
+        }
+    return matrix
+
+
+def _provider_live_matrix(base_config: AppConfig) -> dict[str, Any]:
+    if not base_config.evaluation.public_eval.provider_compatibility.enabled:
+        return {}
+    return asyncio.run(_run_provider_live_matrix_async(base_config))
+
+
+def _feature_evidence_from_live(
+    provider_name: str,
+    feature_name: str,
+    live_matrix: dict[str, Any] | None,
+) -> Literal['static', 'live', 'skipped', 'not_run']:
+    if not live_matrix:
+        return 'static'
+    relevant = [cast(dict[str, Any], item) for item in live_matrix.values() if cast(dict[str, Any], item).get('provider_key') == provider_name]
+    if not relevant:
+        return 'not_run'
+    if any(item.get('status') == 'passed' for item in relevant):
+        if feature_name in {'responses_payload_shape', 'responses_response_parsing'}:
+            for item in relevant:
+                surfaces = cast(dict[str, Any], item.get('surfaces', {}))
+                if any(
+                    surface_name == 'responses' and cast(dict[str, Any], surface).get('status') == 'passed'
+                    for surface_name, surface in surfaces.items()
+                ):
+                    return 'live'
+            return 'static'
+        return 'live'
+    if all(item.get('status') == 'skipped' for item in relevant):
+        return 'skipped'
+    return 'static'
+
+
+def _provider_schema_matrix(live_matrix: dict[str, Any] | None = None) -> dict[str, Any]:
     providers: list[tuple[str, Any, str]] = [
         ('openai_compatible', OpenAIAdapter(), 'deepseek'),
         ('anthropic', AnthropicAdapter(), 'anthropic'),
@@ -652,26 +914,14 @@ def _provider_schema_matrix() -> dict[str, Any]:
     matrix: dict[str, Any] = {}
     for provider_name, adapter, config_provider in providers:
         payload, schema = _protocol_matrix_sample_schema(adapter, config_provider)
-        none_payload, _ = _protocol_matrix_sample_schema(
-            adapter,
-            config_provider,
-            function_calling={'mode': 'none'},
-        )
-        required_payload, _ = _protocol_matrix_sample_schema(
-            adapter,
-            config_provider,
-            function_calling={'mode': 'required'},
-        )
+        none_payload, _ = _protocol_matrix_sample_schema(adapter, config_provider, function_calling={'mode': 'none'})
+        required_payload, _ = _protocol_matrix_sample_schema(adapter, config_provider, function_calling={'mode': 'required'})
         force_payload, _ = _protocol_matrix_sample_schema(
             adapter,
             config_provider,
             function_calling={'mode': 'force', 'forced_tool_name': 'schema_probe'},
         )
-        serial_payload, _ = _protocol_matrix_sample_schema(
-            adapter,
-            config_provider,
-            function_calling={'parallel_tool_calls': False},
-        )
+        serial_payload, _ = _protocol_matrix_sample_schema(adapter, config_provider, function_calling={'parallel_tool_calls': False})
         properties = cast(dict[str, Any], schema.get('properties', {}))
         required = cast(list[str], schema.get('required', []))
         amount_schema = cast(dict[str, Any], properties.get('amount', {}))
@@ -724,9 +974,7 @@ def _provider_schema_matrix() -> dict[str, Any]:
         if adapter.protocol is Protocol.OPENAI:
             none_supported = none_payload.get('tool_choice') == 'none'
             required_supported = required_payload.get('tool_choice') == 'required'
-            forced_supported = (
-                cast(dict[str, Any], force_payload.get('tool_choice', {})).get('function', {}).get('name') == 'schema_probe'
-            )
+            forced_supported = cast(dict[str, Any], force_payload.get('tool_choice', {})).get('function', {}).get('name') == 'schema_probe'
             single_call_supported = serial_payload.get('parallel_tool_calls') is False
         elif adapter.protocol is Protocol.ANTHROPIC:
             none_supported = cast(dict[str, Any], none_payload.get('tool_choice', {})).get('type') == 'none'
@@ -744,90 +992,133 @@ def _provider_schema_matrix() -> dict[str, Any]:
         matrix[provider_name] = {
             'protocol': adapter.protocol.value,
             'features': {
-                'root_object_alias': {
-                    'supported': schema.get('type') == 'object',
-                    'observed': schema.get('type'),
-                },
-                'tuple_array_normalized': {
-                    'supported': cast(dict[str, Any], properties.get('items', {})).get('type') == 'array',
-                    'observed': cast(dict[str, Any], properties.get('items', {})).get('type'),
-                },
-                'any_of_flattened': {
-                    'supported': cast(dict[str, Any], properties.get('choice', {})).get('type') == 'string',
-                    'observed': cast(dict[str, Any], properties.get('choice', {})).get('type'),
-                },
-                'list_type_flattened': {
-                    'supported': params_item_type == 'string' or params_item_type == ['string', 'null'],
-                    'observed': params_item_type,
-                },
-                'format_removed': {
-                    'supported': 'format' not in cast(dict[str, Any], properties.get('timestamp', {})),
-                    'observed': cast(dict[str, Any], properties.get('timestamp', {})).get('format'),
-                },
-                'invalid_required_pruned': {
-                    'supported': 'ghost' not in cast(list[str], schema.get('required', [])),
-                    'observed': cast(list[str], schema.get('required', [])),
-                },
-                'strict_flag': {
-                    'supported': strict_enabled,
-                    'observed': strict_enabled,
-                },
-                'additional_properties_false': {
-                    'supported': schema.get('additionalProperties') is False,
-                    'observed': schema.get('additionalProperties'),
-                },
-                'all_properties_required': {
-                    'supported': set(required) == set(properties),
-                    'observed': required,
-                },
-                'nullable_preserved': {
-                    'supported': nickname_schema.get('type') == ['string', 'null'],
-                    'observed': nickname_schema.get('type'),
-                },
-                'optional_promoted_to_required_nullable': {
-                    'supported': amount_schema.get('type') == ['number', 'null'] and 'amount' in required,
-                    'observed': {
-                        'type': amount_schema.get('type'),
-                        'required': 'amount' in required,
-                    },
-                },
-                'parallel_tool_calls_control': {
-                    'supported': parallel_control is not None,
-                    'observed': parallel_control,
-                },
-                'single_tool_call_control': {
-                    'supported': single_call_supported,
-                    'observed': serial_payload.get('parallel_tool_calls')
+                'root_object_alias': _matrix_feature(
+                    schema.get('type') == 'object',
+                    schema.get('type'),
+                    classification='normalized',
+                    notes='Root dict aliases are normalized into object schemas before request emission.',
+                    evidence=_feature_evidence_from_live(provider_name, 'root_object_alias', live_matrix),
+                ),
+                'tuple_array_normalized': _matrix_feature(
+                    cast(dict[str, Any], properties.get('items', {})).get('type') == 'array',
+                    cast(dict[str, Any], properties.get('items', {})).get('type'),
+                    classification='normalized',
+                    notes='Tuple-like inputs are flattened into provider-safe array schemas.',
+                    evidence=_feature_evidence_from_live(provider_name, 'tuple_array_normalized', live_matrix),
+                ),
+                'any_of_flattened': _matrix_feature(
+                    cast(dict[str, Any], properties.get('choice', {})).get('type') == 'string',
+                    cast(dict[str, Any], properties.get('choice', {})).get('type'),
+                    classification='normalized',
+                    notes='Union-heavy object shapes are flattened into a provider-safe scalar schema.',
+                    evidence=_feature_evidence_from_live(provider_name, 'any_of_flattened', live_matrix),
+                ),
+                'list_type_flattened': _matrix_feature(
+                    params_item_type == 'string' or params_item_type == ['string', 'null'],
+                    params_item_type,
+                    classification='normalized',
+                    notes='List-typed schema.type entries are collapsed into one transport-safe type.',
+                    evidence=_feature_evidence_from_live(provider_name, 'list_type_flattened', live_matrix),
+                ),
+                'format_removed': _matrix_feature(
+                    'format' not in cast(dict[str, Any], properties.get('timestamp', {})),
+                    cast(dict[str, Any], properties.get('timestamp', {})).get('format'),
+                    classification='normalized',
+                    notes='Unsupported format hints are dropped before emission.',
+                    evidence=_feature_evidence_from_live(provider_name, 'format_removed', live_matrix),
+                ),
+                'invalid_required_pruned': _matrix_feature(
+                    'ghost' not in cast(list[str], schema.get('required', [])),
+                    cast(list[str], schema.get('required', [])),
+                    classification='normalized',
+                    notes='Required entries that are absent from properties are removed during normalization.',
+                    evidence=_feature_evidence_from_live(provider_name, 'invalid_required_pruned', live_matrix),
+                ),
+                'strict_flag': _matrix_feature(
+                    strict_enabled,
+                    strict_enabled,
+                    classification='enforced',
+                    notes='The adapter maps strict tool transport onto the provider control surface explicitly.',
+                    evidence=_feature_evidence_from_live(provider_name, 'strict_flag', live_matrix),
+                ),
+                'additional_properties_false': _matrix_feature(
+                    schema.get('additionalProperties') is False,
+                    schema.get('additionalProperties'),
+                    classification='normalized',
+                    notes='Strict object shape is enforced by schema normalization before request emission.',
+                    evidence=_feature_evidence_from_live(provider_name, 'additional_properties_false', live_matrix),
+                ),
+                'all_properties_required': _matrix_feature(
+                    set(required) == set(properties),
+                    required,
+                    classification='normalized',
+                    notes='Optional fields are promoted into the required set when strict structured outputs are needed.',
+                    evidence=_feature_evidence_from_live(provider_name, 'all_properties_required', live_matrix),
+                ),
+                'nullable_preserved': _matrix_feature(
+                    nickname_schema.get('type') == ['string', 'null'],
+                    nickname_schema.get('type'),
+                    classification='normalized',
+                    notes='Nullable fields stay explicitly nullable after transport normalization.',
+                    evidence=_feature_evidence_from_live(provider_name, 'nullable_preserved', live_matrix),
+                ),
+                'optional_promoted_to_required_nullable': _matrix_feature(
+                    amount_schema.get('type') == ['number', 'null'] and 'amount' in required,
+                    {'type': amount_schema.get('type'), 'required': 'amount' in required},
+                    classification='normalized',
+                    notes='Optional scalars are promoted to required-plus-nullable under strict transport.',
+                    evidence=_feature_evidence_from_live(provider_name, 'optional_promoted_to_required_nullable', live_matrix),
+                ),
+                'parallel_tool_calls_control': _matrix_feature(
+                    parallel_control is not None,
+                    parallel_control,
+                    classification='enforced' if adapter.protocol is Protocol.OPENAI else 'not_applicable',
+                    notes='OpenAI-compatible payloads expose an explicit parallel_tool_calls field; other providers do not on this surface.',
+                    evidence=_feature_evidence_from_live(provider_name, 'parallel_tool_calls_control', live_matrix),
+                ),
+                'single_tool_call_control': _matrix_feature(
+                    single_call_supported,
+                    serial_payload.get('parallel_tool_calls')
                     if adapter.protocol is Protocol.OPENAI
                     else serial_payload.get('disable_parallel_tool_use')
                     if adapter.protocol is Protocol.ANTHROPIC
                     else cast(dict[str, Any], serial_payload.get('toolConfig', {})).get('functionCallingConfig'),
-                },
-                'tool_choice_none': {
-                    'supported': none_supported,
-                    'observed': none_payload.get('tool_choice')
+                    classification='best_effort' if provider_name == 'openai_compatible' or adapter.protocol is Protocol.GEMINI else 'enforced',
+                    notes='OpenAI-compatible providers may expose single-call controls without consistently enforcing them; Gemini remains mode-level only.',
+                    evidence=_feature_evidence_from_live(provider_name, 'single_tool_call_control', live_matrix),
+                ),
+                'tool_choice_none': _matrix_feature(
+                    none_supported,
+                    none_payload.get('tool_choice')
                     if adapter.protocol is not Protocol.GEMINI
                     else cast(dict[str, Any], none_payload.get('toolConfig', {})).get('functionCallingConfig'),
-                },
-                'tool_choice_required': {
-                    'supported': required_supported,
-                    'observed': required_payload.get('tool_choice')
+                    classification='enforced',
+                    notes='Provider-neutral no-tool mode is mapped onto an explicit provider control field.',
+                    evidence=_feature_evidence_from_live(provider_name, 'tool_choice_none', live_matrix),
+                ),
+                'tool_choice_required': _matrix_feature(
+                    required_supported,
+                    required_payload.get('tool_choice')
                     if adapter.protocol is not Protocol.GEMINI
                     else cast(dict[str, Any], required_payload.get('toolConfig', {})).get('functionCallingConfig'),
-                },
-                'forced_tool_choice': {
-                    'supported': forced_supported,
-                    'observed': force_payload.get('tool_choice')
+                    classification='enforced',
+                    notes='Provider-neutral required-tool mode is mapped onto an explicit provider control field.',
+                    evidence=_feature_evidence_from_live(provider_name, 'tool_choice_required', live_matrix),
+                ),
+                'forced_tool_choice': _matrix_feature(
+                    forced_supported,
+                    force_payload.get('tool_choice')
                     if adapter.protocol is not Protocol.GEMINI
                     else cast(dict[str, Any], force_payload.get('toolConfig', {})).get('functionCallingConfig'),
-                },
-                'responses_payload_shape': {
-                    'supported': (
-                        isinstance(responses_payload, dict)
-                        and isinstance(responses_payload.get('input'), list)
-                        and responses_payload.get('max_output_tokens') is not None
-                    ),
-                    'observed': (
+                    classification='enforced',
+                    notes='Forced-tool mode is wired through the provider-specific allowlist or named-tool control.',
+                    evidence=_feature_evidence_from_live(provider_name, 'forced_tool_choice', live_matrix),
+                ),
+                'responses_payload_shape': _matrix_feature(
+                    isinstance(responses_payload, dict)
+                    and isinstance(responses_payload.get('input'), list)
+                    and responses_payload.get('max_output_tokens') is not None,
+                    (
                         {
                             'endpoint_hint': 'responses',
                             'input_item_types': [item.get('type') for item in cast(list[dict[str, Any]], responses_payload.get('input', []))],
@@ -839,11 +1130,17 @@ def _provider_schema_matrix() -> dict[str, Any]:
                         if responses_payload is not None
                         else None
                     ),
-                },
-                'responses_response_parsing': {
-                    'supported': responses_parse == {'text': 'responses ok', 'tool_name': 'schema_probe', 'tool_id': 'call_probe'},
-                    'observed': responses_parse,
-                },
+                    classification='normalized' if adapter.protocol is Protocol.OPENAI else 'not_applicable',
+                    notes='Responses payload parity is only applicable to OpenAI-compatible targets that expose /responses.',
+                    evidence=_feature_evidence_from_live(provider_name, 'responses_payload_shape', live_matrix),
+                ),
+                'responses_response_parsing': _matrix_feature(
+                    responses_parse == {'text': 'responses ok', 'tool_name': 'schema_probe', 'tool_id': 'call_probe'},
+                    responses_parse,
+                    classification='normalized' if adapter.protocol is Protocol.OPENAI else 'not_applicable',
+                    notes='Responses output parsing is a transport normalization concern, not a provider-enforced schema contract.',
+                    evidence=_feature_evidence_from_live(provider_name, 'responses_response_parsing', live_matrix),
+                ),
             },
         }
     return matrix
@@ -1829,16 +2126,12 @@ async def _run_bfcl_case_attempt(
         for function in functions:
             original_name = str(function['name'])
             tool_name = tool_name_map[original_name]
-            input_schema = (
-                _strict_normalize_schema(cast(dict[str, Any], function['parameters']))
-                if strict_schema
-                else _normalize_schema(cast(dict[str, Any], function['parameters']))
-            )
+            input_schema = _eval_tool_schema(original_name, cast(dict[str, Any], function['parameters']), strict=strict_schema)
 
             runtime.register_tool(
                 ToolSpec(
                     name=tool_name,
-                    description=function['description'],
+                    description=_eval_tool_description(original_name, str(function['description'])),
                     input_schema=input_schema,
                 ),
                 _build_eval_tool_handler(
@@ -2505,6 +2798,8 @@ def run_public_eval_suite(
         tau_cases=tau_cases,
     )
     _annotate_failure_buckets(records)
+    provider_live_matrix = _provider_live_matrix(base_config)
+    provider_capability_matrix = _provider_schema_matrix(provider_live_matrix)
     return {
         'profile': selected_profile,
         'scope': 'official_manifest' if selected_profile == 'official_full_v4' else 'repo_pinned',
@@ -2524,7 +2819,9 @@ def run_public_eval_suite(
         'stage_summary': _aggregate_stage_summary(records),
         'failure_buckets': _aggregate_failure_buckets(records),
         'remaining_blockers': _remaining_blockers(records),
-        'provider_schema_matrix': _provider_schema_matrix(),
+        'provider_capability_matrix': provider_capability_matrix,
+        'provider_schema_matrix': provider_capability_matrix,
+        'provider_live_matrix': provider_live_matrix,
         'sources': _public_eval_sources(base_config, selected_profile),
     }
 
@@ -2534,5 +2831,10 @@ __all__ = [
     'WebSearchQuotaExceeded',
     'run_public_eval_suite',
 ]
+
+
+
+
+
 
 

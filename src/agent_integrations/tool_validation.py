@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -21,6 +22,15 @@ class ToolValidationError(RuntimeError):
 
 _JSON_OBJECT_TYPES = {'object', 'dict'}
 _JSON_ARRAY_TYPES = {'array', 'tuple'}
+_WEB_SEARCH_PREFIX_PATTERN = re.compile(
+    r'^(search(\s+the)?\s+web(\s+for)?|web\s+search(\s+for)?|look\s+up|find)\s*[:,-]?\s*',
+    re.IGNORECASE,
+)
+_WEB_SEARCH_TRAILING_PATTERN = re.compile(
+    r'[\s,;:-]*(what\s+is\s+the\s+(exact\s+)?page\s+title|what\s+is\s+its\s+title|return\s+the\s+exact\s+page\s+title)\??\s*$',
+    re.IGNORECASE,
+)
+_QUERY_STRIP = "\"'` "
 
 
 def normalize_and_validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> ValidationResult:
@@ -95,9 +105,9 @@ def _normalize_value(value: Any, schema: dict[str, Any], path: str) -> tuple[Any
         return value, [f'{path} expected boolean']
     if expected_type == 'string':
         if isinstance(value, str):
-            return value, []
+            return _normalize_string_value(value, schema), []
         if isinstance(value, (int, float, bool)):
-            return str(value), []
+            return _normalize_string_value(str(value), schema), []
         return value, [f'{path} expected string']
     return value, []
 
@@ -130,3 +140,20 @@ def _normalize_expected_types(raw_type: Any) -> list[str]:
     if raw_type in (None, ''):
         return []
     return [str(raw_type).strip().lower()]
+
+
+def _normalize_string_value(value: str, schema: dict[str, Any]) -> str:
+    normalizer = str(schema.get('x-easy-agent-normalizer') or '').strip().casefold()
+    if normalizer == 'web_search_query':
+        return _normalize_web_search_query(value)
+    return value
+
+
+def _normalize_web_search_query(value: str) -> str:
+    query = _WEB_SEARCH_PREFIX_PATTERN.sub('', value.strip(), count=1)
+    query = _WEB_SEARCH_TRAILING_PATTERN.sub('', query)
+    query = re.sub(r'^the\s+', '', query, count=1, flags=re.IGNORECASE)
+    query = re.sub(r'\s+', ' ', query).strip(_QUERY_STRIP)
+    return query.rstrip(' .,:;!?')
+
+

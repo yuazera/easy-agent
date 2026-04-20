@@ -83,3 +83,18 @@ def test_guardrail_ignores_plain_text_tools_with_shell_like_punctuation() -> Non
     decisions = engine.check_tool_input('python_echo', {'prompt': 'Summarize alpha; beta; gamma.'}, build_context())
 
     assert decisions[0].outcome == 'allow'
+
+def test_tool_validation_can_normalize_web_search_query_wrappers() -> None:
+    result = normalize_and_validate_tool_arguments(
+        {
+            'type': 'object',
+            'properties': {
+                'query': {'type': 'string', 'x-easy-agent-normalizer': 'web_search_query'},
+            },
+            'required': ['query'],
+        },
+        {'query': 'Search the web for the official OpenAI Structured Outputs guide. What is the exact page title?'},
+    )
+
+    assert result.errors == []
+    assert result.normalized == {'query': 'official OpenAI Structured Outputs guide'}
