@@ -25,7 +25,7 @@ async def test_skill_loader_registers_python_and_command_skills() -> None:
         RunContext(run_id="run_1", workdir=Path.cwd(), node_id="node_1"),
     )
 
-    assert {skill.name for skill in skills} == {"python_echo", "command_echo"}
+    assert {skill.name for skill in skills} == {"python_echo", "command_echo", "official_source_search"}
     assert result["echo"] == "hello"
 
 

@@ -60,6 +60,24 @@ Executor- and host-gated real-network coverage may also require:
 - `EASY_AGENT_QEMU_SSH_KEY`
 - `EASY_AGENT_QEMU_SSH_USER`
 
+## Practical Official-Source Search
+
+The shipped `skills/examples/official_source_search` skill is meant to be used as a practical source-prioritized search tool instead of a benchmark-only helper.
+
+- Mounting `skills/examples` now exposes `official_source_search`.
+- The tool can prioritize primary documentation domains through:
+  - `mode: preferred_first | preferred_only | general`
+  - `preferred_domains`
+- Optional fetched-page extraction is available through:
+  - `fetch_contents`
+  - `content_mode: truncate | markdown | raw`
+
+Typical config expectations:
+
+- Keep `SERPAPI_API_KEY` in the environment only.
+- Put the tool name on the agent that should be allowed to browse.
+- Treat `preferred_domains` as a ranking policy hint, not as a hidden allowlist.
+
 ## Harness Outputs
 
 Harness runs persist durable artifacts under the configured artifact directory and durable session storage, including:
@@ -73,6 +91,12 @@ Harness runs persist durable artifacts under the configured artifact directory a
 ## Public Eval Profiles
 
 `full_v4` remains the public score baseline in the README. `official_full_v4` accepts raw official-style manifests in JSON or JSONL form, while the README headline score stays on the repo-pinned baseline.
+
+Additional local reinforcement profiles are now available:
+
+- `browsecomp_subset`
+- `simpleqa_subset`
+- `simple_evals_subset`
 
 Useful config fields under `evaluation.public_eval.official_dataset`:
 
@@ -91,6 +115,23 @@ Selection notes:
 - `selection_mode: balanced_per_suite` interleaves cases across normalized suites before applying `max_cases`.
 - `category_allowlist` filters on normalized public categories such as `agentic`, `multihop`, `memory`, and `web_search`.
 - `max_cases_per_suite` caps one normalized suite before the final `max_cases` limit is applied.
+
+Useful config fields under `evaluation.public_eval.simple_evals`:
+
+- `browsecomp_path`
+- `browsecomp_source_url`
+- `browsecomp_case_allowlist`
+- `browsecomp_max_cases`
+- `simpleqa_path`
+- `simpleqa_source_url`
+- `simpleqa_case_allowlist`
+- `simpleqa_max_cases`
+
+Grader notes:
+
+- `evaluation.public_eval.grader.enabled` keeps the strict grading path explicit.
+- If grader mode is enabled, the configured credential env var must be present; the runtime no longer silently downgrades that path.
+- Benchmark questions are still not vendored into this repository. Point the config at your own JSON or JSONL export, or an explicit dataset-export URL, instead of an evaluator source file.
 
 ## Provider Compatibility Live Matrix
 

@@ -6,23 +6,39 @@ import re
 import time
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import urlparse
 
 import httpx
 
 from agent_config.app import PublicEvalWebSearchConfig
+from agent_integrations.official_source_search import (
+    SUPPORTED_CONTENT_MODES as _SUPPORTED_CONTENT_MODES_SHARED,
+)
+from agent_integrations.official_source_search import (
+    apply_source_policy as _apply_source_policy,
+)
+from agent_integrations.official_source_search import (
+    html_to_markdown_like_text as _html_to_markdown_like_text_shared,
+)
+from agent_integrations.official_source_search import (
+    normalize_contents_mode as _normalize_contents_mode_shared,
+)
+from agent_integrations.official_source_search import (
+    normalize_num_results as _normalize_num_results_shared,
+)
+from agent_integrations.official_source_search import (
+    normalize_search_results as _normalize_search_results_shared,
+)
+from agent_integrations.official_source_search import (
+    shape_query as _shape_query_shared,
+)
+from agent_integrations.official_source_search import (
+    site_name as _site_name_shared,
+)
+from agent_integrations.official_source_search import (
+    strip_html_text as _strip_html_text_shared,
+)
 
-_SEARCH_PREFIX_PATTERN = re.compile(
-    r'^(search(\s+the)?\s+web(\s+for)?|web\s+search(\s+for)?|look\s+up|find)\s*[:,-]?\s*',
-    re.IGNORECASE,
-)
-_TRAILING_TITLE_QUESTION_PATTERN = re.compile(
-    r'[\s,;:-]*(what\s+is\s+the\s+(exact\s+)?page\s+title|what\s+is\s+its\s+title|return\s+the\s+exact\s+page\s+title)\??\s*$',
-    re.IGNORECASE,
-)
-_QUOTE_STRIP = "\"'` "
-_MAX_QUERY_LENGTH = 180
-_SUPPORTED_CONTENT_MODES = {'truncate', 'raw', 'markdown'}
+_SUPPORTED_CONTENT_MODES = _SUPPORTED_CONTENT_MODES_SHARED
 
 
 class WebSearchQuotaExceeded(RuntimeError):
@@ -42,25 +58,15 @@ def _case_prompt(case: dict[str, Any]) -> str:
 
 def _shape_web_search_query(raw_query: str, case: dict[str, Any]) -> str:
     prompt = _case_prompt(case).strip()
-    query = raw_query.strip() or prompt
-    query = _SEARCH_PREFIX_PATTERN.sub('', query, count=1)
-    query = _TRAILING_TITLE_QUESTION_PATTERN.sub('', query)
-    query = re.sub(r'\s+', ' ', query).strip(_QUOTE_STRIP)
-    query = query.rstrip(' .,:;!?')
-    if 'official' in prompt.casefold() and 'official' not in query.casefold():
-        query = f'official {query}'.strip()
-    if len(query) <= _MAX_QUERY_LENGTH:
-        return query
-    trimmed = query[:_MAX_QUERY_LENGTH].rsplit(' ', 1)[0].strip()
-    return trimmed or query[:_MAX_QUERY_LENGTH].strip()
+    return _shape_query_shared(
+        raw_query,
+        fallback_prompt=prompt,
+        prefer_official='official' in prompt.casefold(),
+    )
 
 
 def _normalize_num_results(value: Any, *, default: int = 5, maximum: int = 10) -> int:
-    try:
-        number = int(value or default)
-    except (TypeError, ValueError):
-        number = default
-    return max(1, min(number, maximum))
+    return _normalize_num_results_shared(value, default=default, maximum=maximum)
 
 
 def _load_web_search_usage(path: Path) -> list[dict[str, Any]]:
@@ -117,8 +123,7 @@ def _should_use_replay_results(case: dict[str, Any], web_search: PublicEvalWebSe
 
 
 def _site_name(url: str, fallback: str = 'unknown') -> str:
-    parsed = urlparse(url)
-    return parsed.netloc or fallback
+    return _site_name_shared(url, fallback)
 
 
 def _replay_web_search(case: dict[str, Any], *, query: str, num_results: int, backend: str) -> dict[str, Any]:
@@ -130,24 +135,7 @@ def _replay_web_search(case: dict[str, Any], *, query: str, num_results: int, ba
 
 
 def _normalize_serpapi_search_results(payload: dict[str, Any], *, num_results: int) -> list[dict[str, Any]]:
-    raw_results = payload.get('organic_results', [])
-    if not isinstance(raw_results, list):
-        return []
-    normalized: list[dict[str, Any]] = []
-    for index, item in enumerate(raw_results[:num_results], start=1):
-        if not isinstance(item, dict):
-            continue
-        link = str(item.get('link') or item.get('url') or '').strip()
-        normalized.append(
-            {
-                'position': int(item.get('position') or index),
-                'title': str(item.get('title') or item.get('name') or '').strip(),
-                'link': link,
-                'source': str(item.get('source') or item.get('displayed_link') or _site_name(link)),
-                'snippet': str(item.get('text') or item.get('snippet') or '').strip(),
-            }
-        )
-    return normalized
+    return _normalize_search_results_shared(payload, num_results=num_results)
 
 
 def _normalize_web_contents_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -170,8 +158,7 @@ def _normalize_web_contents_results(payload: dict[str, Any]) -> list[dict[str, A
 
 
 def _normalize_contents_mode(value: Any) -> str:
-    mode = str(value or 'truncate').strip().casefold()
-    return mode if mode in _SUPPORTED_CONTENT_MODES else 'truncate'
+    return _normalize_contents_mode_shared(value)
 
 
 def _normalize_title_key(value: str) -> str:
@@ -236,26 +223,11 @@ def _grounded_retry_urls(
 
 
 def _strip_html_text(value: str) -> str:
-    collapsed = re.sub(r'<script.*?</script>|<style.*?</style>', ' ', value, flags=re.IGNORECASE | re.DOTALL)
-    collapsed = re.sub(r'<[^>]+>', ' ', collapsed)
-    collapsed = re.sub(r'\s+', ' ', collapsed)
-    return collapsed.strip()
+    return _strip_html_text_shared(value)
 
 
 def _html_to_markdown_like_text(value: str) -> str:
-    text = re.sub(r'<script.*?</script>|<style.*?</style>', ' ', value, flags=re.IGNORECASE | re.DOTALL)
-    text = re.sub(r'<\s*br\s*/?\s*>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<\s*/?\s*p\s*>', '\n\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<\s*/?\s*div\s*>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<\s*h([1-6])\s*>', '\n\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<\s*/\s*h[1-6]\s*>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<\s*li\s*>', '\n- ', text, flags=re.IGNORECASE)
-    text = re.sub(r'<\s*/\s*li\s*>', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'<[^>]+>', ' ', text)
-    text = re.sub(r'[ \t]+\n', '\n', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    text = re.sub(r'[ \t]{2,}', ' ', text)
-    return text.strip()
+    return _html_to_markdown_like_text_shared(value)
 
 
 def _render_contents_text(body: str, content_type: str, *, mode: str) -> str:
@@ -317,11 +289,19 @@ def _serpapi_search(arguments: dict[str, Any], case: dict[str, Any], web_search:
         return _replay_web_search(case, query=query, num_results=num_results, backend='service_unavailable_replay')
     response.raise_for_status()
     payload = cast(dict[str, Any], response.json())
+    results = _normalize_serpapi_search_results(payload, num_results=num_results)
+    ranked = _apply_source_policy(
+        results,
+        source_policy=web_search.source_policy,
+        preferred_domains=list(web_search.preferred_domains),
+    )
     return {
         'query': query,
-        'results': _normalize_serpapi_search_results(payload, num_results=num_results),
+        'results': ranked,
         'backend': 'serpapi',
         'source': 'network',
+        'source_policy': web_search.source_policy,
+        'preferred_domains': list(web_search.preferred_domains),
     }
 
 

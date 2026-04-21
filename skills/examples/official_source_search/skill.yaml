@@ -1,0 +1,33 @@
+name: official_source_search
+description: Search official or preferred sources and optionally fetch page contents.
+entry_type: python
+hook: hook.py:run
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+    mode:
+      type: string
+      enum:
+        - general
+        - preferred_first
+        - preferred_only
+    preferred_domains:
+      type: array
+      items:
+        type: string
+    num_results:
+      type: integer
+    fetch_contents:
+      type: boolean
+    result_index:
+      type: integer
+    content_mode:
+      type: string
+      enum:
+        - truncate
+        - markdown
+        - raw
+  required:
+    - query

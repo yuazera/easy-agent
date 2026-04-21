@@ -27,6 +27,7 @@ graph:
         - github_issue_prepare_fix
         - git_commit_local
         - github_release_publish
+        - official_source_search
         - python_echo
         - command_echo
       sub_agents:
@@ -87,6 +88,14 @@ evaluation:
       hourly_limit: 50
       daily_limit: 300
       quota_policy: resume_later
+      source_policy: preferred_first
+      preferred_domains:
+        - docs.python.org
+        - modelcontextprotocol.io
+        - platform.openai.com
+        - developers.openai.com
+        - platform.claude.com
+        - ai.google.dev
     official_dataset:
       # official_full_v4 reads from a cached local manifest or downloads one when source_url is set.
       cache_dir: .easy-agent/public-eval-cache
@@ -100,6 +109,29 @@ evaluation:
       selection_mode: manifest_order
       max_cases:
       max_cases_per_suite:
+    simple_evals:
+      cache_dir: .easy-agent/public-eval-cache/simple-evals
+      browsecomp_path:
+      # Point this to a local JSON/JSONL subset or a dataset export URL, not the evaluator source code.
+      browsecomp_source_url:
+      browsecomp_case_allowlist: []
+      browsecomp_max_cases: 5
+      simpleqa_path:
+      # Point this to a local JSON/JSONL subset or a dataset export URL, not the evaluator source code.
+      simpleqa_source_url:
+      simpleqa_case_allowlist: []
+      simpleqa_max_cases: 10
+    grader:
+      enabled: false
+      provider: openai
+      protocol: openai
+      model: gpt-4.1-mini
+      base_url: https://api.openai.com/v1
+      api_key_env: OPENAI_API_KEY
+      openai_api_style: responses
+      timeout_seconds: 30
+      max_tokens: 256
+      temperature: 0.0
     provider_compatibility:
       enabled: true
       targets:

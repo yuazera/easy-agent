@@ -535,6 +535,8 @@ class PublicEvalWebSearchConfig(BaseModel):
     daily_limit: int = 300
     usage_path: str = '.easy-agent/public-eval-web-search-usage.json'
     quota_policy: Literal['resume_later', 'replay', 'fail'] = 'resume_later'
+    source_policy: Literal['general', 'preferred_first', 'preferred_only'] = 'general'
+    preferred_domains: list[str] = Field(default_factory=list)
 
 
 class PublicEvalOfficialDatasetConfig(BaseModel):
@@ -549,6 +551,37 @@ class PublicEvalOfficialDatasetConfig(BaseModel):
     selection_mode: Literal['manifest_order', 'balanced_per_suite'] = 'manifest_order'
     max_cases: int | None = None
     max_cases_per_suite: int | None = None
+
+
+class PublicEvalSimpleEvalsConfig(BaseModel):
+    cache_dir: str = '.easy-agent/public-eval-cache/simple-evals'
+    browsecomp_path: str | None = None
+    browsecomp_source_url: str | None = None
+    browsecomp_case_allowlist: list[str] = Field(default_factory=list)
+    browsecomp_max_cases: int | None = None
+    simpleqa_path: str | None = None
+    simpleqa_source_url: str | None = None
+    simpleqa_case_allowlist: list[str] = Field(default_factory=list)
+    simpleqa_max_cases: int | None = None
+
+
+class PublicEvalGraderConfig(BaseModel):
+    enabled: bool = False
+    provider: str = 'openai'
+    protocol: Protocol = Protocol.OPENAI
+    model: str = 'gpt-4.1-mini'
+    base_url: str = 'https://api.openai.com/v1'
+    api_key_env: str = 'OPENAI_API_KEY'
+    openai_api_style: Literal['chat_completions', 'responses'] = 'responses'
+    timeout_seconds: float = 30.0
+    max_tokens: int = 256
+    temperature: float = 0.0
+
+    @model_validator(mode='after')
+    def validate_grader(self) -> PublicEvalGraderConfig:
+        if self.enabled and not str(self.api_key_env).strip():
+            raise ValueError('public eval grader requires api_key_env when enabled')
+        return self
 
 
 class ProviderCompatibilityTargetConfig(BaseModel):
@@ -584,11 +617,20 @@ class ProviderCompatibilityConfig(BaseModel):
 
 
 class PublicEvalConfig(BaseModel):
-    profile: Literal['subset', 'full_v4', 'official_full_v4'] = 'full_v4'
+    profile: Literal[
+        'subset',
+        'full_v4',
+        'official_full_v4',
+        'browsecomp_subset',
+        'simpleqa_subset',
+        'simple_evals_subset',
+    ] = 'full_v4'
     bfcl_version: str = 'v4'
     enable_full_bfcl: bool = True
     web_search: PublicEvalWebSearchConfig = Field(default_factory=PublicEvalWebSearchConfig)
     official_dataset: PublicEvalOfficialDatasetConfig = Field(default_factory=PublicEvalOfficialDatasetConfig)
+    simple_evals: PublicEvalSimpleEvalsConfig = Field(default_factory=PublicEvalSimpleEvalsConfig)
+    grader: PublicEvalGraderConfig = Field(default_factory=PublicEvalGraderConfig)
     provider_compatibility: ProviderCompatibilityConfig = Field(default_factory=ProviderCompatibilityConfig)
 
 

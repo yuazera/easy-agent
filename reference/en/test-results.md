@@ -47,6 +47,7 @@ Scoring notes:
 - `public_eval.bfcl_web_search` is tracked as normalized final-answer accuracy, with tool-call match rates kept as diagnostic signals.
 - The repo-pinned `full_v4` BFCL slice is fully green in this snapshot, including the core multi-tool cases plus the added search-plus-contents and memory-backed cases.
 - Raw `official_full_v4` manifests are normalized from JSON or JSONL inputs before filtering and execution, without switching the README headline score away from the repo-pinned baseline.
+- `browsecomp_subset`, `simpleqa_subset`, and `simple_evals_subset` are now supported as local reinforcement profiles, but they are not part of the retained headline score snapshot because this repository does not vendor those benchmark questions.
 - The provider compatibility matrix covers OpenAI-compatible chat-completions and Responses API payload or parsing parity on top of the strict function-calling baseline.
 - MCP catalog durability includes `resource_templates`, prompt-detail cache entries, and notification-driven stale marking.
 
@@ -123,8 +124,8 @@ The README keeps the comparison high level. This page keeps the public evidence 
 This round uses Python-based verification only.
 
 - Static checks: `ruff` and `mypy`
-- Targeted regressions around provider compatibility, config validation, guardrails, and BFCL evaluation: `89 passed`
-- Full unit coverage: `196 passed`
+- Targeted regressions around provider compatibility, config validation, guardrails, BFCL evaluation, official-source search, and simple-evals profile support: `89 passed` plus `4 passed`
+- Full unit coverage: `200 passed`
 - Targeted live provider-compatibility regression: `1 passed`
 - Full real integration coverage: `7 passed`, `2 warnings`
 - The retained benchmark and headline public-eval scores still point at the April 14 release snapshot, while the real-network artifact and live provider-compatibility evidence were refreshed on April 20

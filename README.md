@@ -56,7 +56,8 @@ Most agent projects move quickly from "call a model" to "ship an application". T
 - Session memory, checkpoints, replay, branchable resume, and approval-aware recovery.
 - Guardrails, schema-aware tool validation, runtime event streaming, and persistent traces.
 - A2A-style remote federation with durable task state and signed callback verification.
-- Public evaluation helpers for benchmark, BFCL, tau2 mock, live provider-compatibility matrices, and real-network regression tracking.
+- Practical `official_source_search` skill support for source-prioritized search and fetched-page extraction.
+- Public evaluation helpers for benchmark, BFCL, tau2 mock, BrowseComp/SimpleQA-style slices, live provider-compatibility matrices, and real-network regression tracking.
 
 ## Human Loop, Replay, and MCP
 
@@ -131,7 +132,7 @@ The worker loop persists artifacts and checkpoints so long-running tasks can con
 
 - Model protocols: OpenAI-compatible chat-completions or Responses API payload normalization, Anthropic-style payloads, and Gemini-style payload normalization.
 - Tool calling: strict schema transport, nullable/optional modeling, validation-repair loops, provider-neutral tool-choice controls, and explicit enforced-versus-best-effort provider compatibility telemetry.
-- Web-search eval hardening: SerpApi `/search.json`, grounded source ledgers, cache-first contents reuse, replay-backed contents fallback, raw official BFCL manifest normalization, and single-call regression guards.
+- Search and eval hardening: SerpApi `/search.json`, source-policy ordering for preferred official domains, grounded source ledgers, cache-first contents reuse, replay-backed contents fallback, raw official BFCL manifest normalization, and `browsecomp_subset` / `simpleqa_subset` / `simple_evals_subset` profile support.
 
 Provider behavior details and structured-output notes live in [reference/en/next-reinforcement.md](./reference/en/next-reinforcement.md).
 
@@ -179,7 +180,7 @@ Artifact details are documented in [reference/en/usage-guide.md](./reference/en/
 
 ## Verification
 
-The latest published patch remains `0.3.5`. The retained benchmark and headline public-eval score snapshot is still the April 14, 2026 release baseline, while the latest Python verification refresh on April 20, 2026 revalidated the live provider-compatibility matrix and real-network suite without changing that retained score baseline. Methodology notes, public comparison rows, and detailed matrices live in [reference/en/test-results.md](./reference/en/test-results.md).
+The latest published patch remains `0.3.5`. The retained benchmark and headline public-eval score snapshot is still the April 14, 2026 release baseline, while the latest Python verification refresh on April 20, 2026 revalidated `ruff`, `mypy`, `200` unit tests, and `7` live integration tests without changing that retained score baseline. Methodology notes, public comparison rows, and detailed matrices live in [reference/en/test-results.md](./reference/en/test-results.md).
 
 ### Score Summary
 
@@ -202,7 +203,7 @@ The real-network matrix is reported as score-only in this README. The score row 
 The next reinforcement track is documented in full at [reference/en/next-reinforcement.md](./reference/en/next-reinforcement.md). The near-term focus remains:
 
 - widening the shipped live provider-compatibility matrix beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini evidence when credentials are present
-- extending BFCL web-search from grounded replay safety toward richer source-ledger, source-aware, and multihop official coverage
+- promoting the new official-source search plus BrowseComp or SimpleQA path into refreshed scored slices once official dataset exports and grader credentials are available
 - expanding live `/responses` compatibility coverage where OpenAI-compatible providers actually expose it, while keeping single-tool enforcement explicitly labeled as best effort when providers do not honor it strictly
 - deepening MCP notification parity around resource updates, prompt-detail refresh, and template diff telemetry
 
@@ -210,11 +211,12 @@ The next reinforcement track is documented in full at [reference/en/next-reinfor
 
 - OpenAI function calling: <https://developers.openai.com/api/docs/guides/function-calling>
 - OpenAI structured outputs: <https://developers.openai.com/api/docs/guides/structured-outputs>
-- OpenAI web search tool: <https://platform.openai.com/docs/guides/tools-web-search>
-- Anthropic tool use: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools>
+- OpenAI web search tool: <https://developers.openai.com/api/docs/guides/tools-web-search>
+- OpenAI simple-evals: <https://github.com/openai/simple-evals>
+- Anthropic tool use: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview>
 - Gemini function calling: <https://ai.google.dev/gemini-api/docs/function-calling>
 - BFCL v4 web search: <https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html>
-- Model Context Protocol: <https://modelcontextprotocol.io/specification>
+- Model Context Protocol: <https://modelcontextprotocol.io/specification/2025-11-25>
 - SerpApi Search API: <https://serpapi.com/search-api>
 - FastAPI README style reference: <https://github.com/fastapi/fastapi>
 - uv README style reference: <https://github.com/astral-sh/uv>

@@ -49,7 +49,14 @@ def run_longrun(
 @integration_app.command('public-eval')
 def run_public_eval(
     config: str = typer.Option('easy-agent.yml', '-c', '--config'),
-    profile: Literal['subset', 'full_v4', 'official_full_v4'] | None = typer.Option(None, '--profile'),
+    profile: Literal[
+        'subset',
+        'full_v4',
+        'official_full_v4',
+        'browsecomp_subset',
+        'simpleqa_subset',
+        'simple_evals_subset',
+    ] | None = typer.Option(None, '--profile'),
     output_path: str = typer.Option('.easy-agent/public-eval-report.json', '--output'),
 ) -> None:
     report = run_public_eval_suite(config, profile=profile)

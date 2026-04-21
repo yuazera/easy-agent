@@ -47,6 +47,7 @@
 - `public_eval.bfcl_web_search` 以规范化最终答案准确率为主，tool-call 命中率继续保留为诊断信号。
 - 这次 repo-pinned `full_v4` BFCL 子集已经全绿，既包括 core multi-tool cases，也包括新增的 search-plus-contents 与 memory-backed cases。
 - `official_full_v4` 现在会先把 JSON / JSONL 的 raw official manifest 做归一化，再进入过滤和执行流程，而不直接切换 README headline score 的基线。
+- `browsecomp_subset`、`simpleqa_subset` 与 `simple_evals_subset` 现在已经支持作为本地补强 profile，但因为仓库不直接 vendored 这些 benchmark 题目，所以它们还不进入保留的 headline score 快照。
 - provider compatibility matrix 现在同时覆盖 OpenAI-compatible 的 chat-completions 与 Responses API payload / parsing 对齐，建立在 strict function-calling 基线之上。
 - MCP catalog durability 现在也覆盖 `resource_templates`、prompt detail cache entries 与通知驱动的 stale 标记。
 
@@ -123,8 +124,8 @@ README 只保留高层摘要，本页保留公开证据映射。
 本轮只使用 Python-based verification。
 
 - 静态检查：`ruff` 与 `mypy`
-- 定向回归：provider compatibility、config validation、guardrails 与 BFCL evaluation，结果 `89 passed`
-- 全量 unit tests：`196 passed`
+- 定向回归：provider compatibility、config validation、guardrails、BFCL evaluation、official-source search 与 simple-evals profile support，结果 `89 passed` 加 `4 passed`
+- 全量 unit tests：`200 passed`
 - 定向 live provider compatibility 回归：`1 passed`
 - 全量 real integration：`7 passed`、`2 warnings`
 - 保留的 benchmark 与 public-eval headline 分数仍指向 4 月 14 日发布快照，而 real-network artifact 与 live provider compatibility 证据在 4 月 20 日重新刷新

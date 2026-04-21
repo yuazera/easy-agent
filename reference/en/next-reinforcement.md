@@ -6,6 +6,7 @@ This roadmap starts from the published `0.3.5` baseline.
 
 - Widen the shipped live provider-specific compatibility evidence beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini coverage when credentials are present.
 - Extend the raw official BFCL v4 normalization path into wider agentic and multihop coverage with clearer official-category diagnostics.
+- Turn the newly shipped `official_source_search` plus `browsecomp_subset` / `simpleqa_subset` support into refreshable scored slices once local dataset exports and grader credentials are available.
 - Deepen MCP notification parity around resource updates, prompt-detail refresh, and template diff telemetry without widening the model-facing runtime surface.
 
 ## Web Search Reinforcement
@@ -28,6 +29,8 @@ Better next directions after the current baseline:
 - add grounded-source visibility closer to the source-oriented evidence shape now exposed by OpenAI web-search responses
 - add domain-aware or source-aware query constraints for cases where official-doc grounding matters more than generic search recall
 - add wider official BFCL web-search multihop slices that explicitly separate query-planning misses from fetch-grounding misses
+- align the local BrowseComp/SimpleQA ingestion path with the current OpenAI `simple-evals` repository layout without vendoring benchmark question content into this repository
+- keep the grader path explicit so official or official-style grading does not silently downgrade to heuristic exact-match mode
 
 ## Provider Compatibility
 
@@ -84,8 +87,9 @@ Reference:
 
 - <https://developers.openai.com/api/docs/guides/function-calling>
 - <https://developers.openai.com/api/docs/guides/structured-outputs>
-- <https://platform.openai.com/docs/guides/tools-web-search>
-- <https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools>
+- <https://developers.openai.com/api/docs/guides/tools-web-search>
+- <https://github.com/openai/simple-evals>
+- <https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview>
 - <https://ai.google.dev/gemini-api/docs/function-calling>
 - <https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html>
 - <https://serpapi.com/search-api>

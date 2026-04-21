@@ -6,6 +6,7 @@
 
 - 把已经交付的 live provider-specific 兼容证据继续扩展到必跑的 DeepSeek/OpenAI-compatible 基线之外，在有凭据时补齐 Anthropic 与 Gemini 覆盖。
 - 把 raw official BFCL v4 归一化路径继续推进到更广的 agentic 与 multihop 覆盖，并补齐更清晰的官方分类诊断。
+- 在拿到本地数据导出与 grader 凭据后，把新交付的 `official_source_search` 与 `browsecomp_subset` / `simpleqa_subset` 支持推进成可刷新分数的评测切片。
 - 在不随意扩大 model-facing runtime surface 的前提下，继续深化 MCP 通知对齐，包括 resource updates、prompt-detail refresh 与 template diff telemetry。
 
 ## Web Search 补强
@@ -28,6 +29,8 @@
 - 把 grounded-source visibility 继续推进到更接近 OpenAI web-search 响应里 source-oriented evidence 的形态
 - 为“官方文档优先”这类 case 增加 domain-aware / source-aware query constraints，而不是只追求泛化搜索召回
 - 在更广的 official BFCL web-search multihop 切片里，把 query planning miss 与 fetch grounding miss 分开统计
+- 把本地 BrowseComp/SimpleQA 数据接入路径继续对齐当前 OpenAI `simple-evals` 仓库布局，但不要把 benchmark 题目直接 vendored 到本仓库
+- 保持 grader 路径显式化，避免官方或官方风格 grading 在缺少凭据时静默回退成 heuristic exact match
 
 ## Provider 兼容性
 
@@ -84,8 +87,9 @@
 
 - <https://developers.openai.com/api/docs/guides/function-calling>
 - <https://developers.openai.com/api/docs/guides/structured-outputs>
-- <https://platform.openai.com/docs/guides/tools-web-search>
-- <https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools>
+- <https://developers.openai.com/api/docs/guides/tools-web-search>
+- <https://github.com/openai/simple-evals>
+- <https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview>
 - <https://ai.google.dev/gemini-api/docs/function-calling>
 - <https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html>
 - <https://serpapi.com/search-api>
