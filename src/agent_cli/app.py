@@ -12,6 +12,7 @@ from agent_cli.commands.catalog import (
     workbench_app,
 )
 from agent_cli.commands.general import register as register_general
+from agent_cli.commands.general import runs_app, traces_app
 from agent_cli.commands.harness import harness_app
 from agent_cli.commands.integration import integration_app
 
@@ -25,4 +26,6 @@ app.add_typer(workbench_app, name='workbench')
 app.add_typer(approvals_app, name='approvals')
 app.add_typer(harness_app, name='harness')
 app.add_typer(integration_app, name='integration')
+app.add_typer(runs_app, name='runs')
+app.add_typer(traces_app, name='traces')
 register_general(app)

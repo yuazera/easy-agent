@@ -108,6 +108,19 @@ Warm-start telemetry summary:
 | telemetry.snapshot_drift_ratio_average | 0.4047 |
 | telemetry.snapshot_drift_ratio_max | 0.5943 |
 
+Scenario proof fields are now emitted with each real-network record so score rows can be traced back to an executable scenario contract:
+
+| Scenario | Command | Expected Artifact | Pass Criteria |
+| --- | --- | --- | --- |
+| resume after failure | `uv run easy-agent integration real-network` | real-network report row for replay/resume failure injection | checkpoint replay or resume completes without rerunning completed work |
+| human approval pending then continue | `uv run easy-agent run ... --approval-mode deferred` plus `uv run easy-agent approvals approve ...` | run summary, approval record, and trace tree | sensitive work enters durable approval and resumes after approval |
+| MCP server restart | `uv run easy-agent mcp resources list ...` after transport refresh | MCP catalog snapshot and subscription state | catalog entries, prompt details, and subscription state survive refresh or restart |
+| provider tool schema rejection then repair | `uv run easy-agent integration public-eval --profile full_v4` | public-eval provider matrix and failure-stage diagnostics | provider schema rejection enters strict-schema repair or classified best-effort evidence |
+| federation disconnect and retry | `uv run easy-agent integration real-network` | real-network row for disconnect retry chaos | callback retry, signed delivery, sendSubscribe, and resubscribe remain durable |
+| workbench snapshot restore | `uv run easy-agent integration real-network` | real-network workbench restore rows | process, container, or microVM sessions restore state within the configured budget |
+
+The same report carries security assertions for executor and federation rows, including credential redaction, loopback-only test servers, signed callback verification, scoped workbench roots, and explicit host-gated dependencies.
+
 ## Similar Agent Project Comparison
 
 The README keeps the comparison high level. This page keeps the public evidence mapping.
@@ -130,5 +143,6 @@ This round uses Python-based verification only.
 - Full real integration coverage: `7 passed`, `2 warnings`
 - The retained benchmark and headline public-eval scores still point at the April 14 release snapshot, while the real-network artifact and live provider-compatibility evidence were refreshed on April 20
 - The remaining warnings are known Windows asyncio subprocess cleanup warnings after successful completion
+- New focused regressions cover run listing, run summary, structured trace tree export, executor capability reports, storage contracts, and real-network scenario proof metadata.
 
 Exact machine-local execution logs stay outside the repository-facing documentation surface.

@@ -4,6 +4,8 @@
 
 ## 当前重点
 
+- 继续降低 runtime 复杂度，把大型兼容模块拆成更小但 import-compatible 的 surface，并把 storage contracts 与 trace helpers 从 SQLite 细节里分离出来。
+- 把新的 run summary 与 trace-tree export 推进成主要排障入口；等本地 JSON trace 形态稳定后，再对齐 OpenTelemetry GenAI semantic conventions。
 - 把已经交付的 live provider-specific 兼容证据继续扩展到必跑的 DeepSeek/OpenAI-compatible 基线之外，在有凭据时补齐 Anthropic 与 Gemini 覆盖。
 - 把 raw official BFCL v4 归一化路径继续推进到更广的 agentic 与 multihop 覆盖，并补齐更清晰的官方分类诊断。
 - 在拿到本地数据导出与 grader 凭据后，把新交付的 `official_source_search` 与 `browsecomp_subset` / `simpleqa_subset` 支持推进成可刷新分数的评测切片。
@@ -88,6 +90,8 @@
 - <https://developers.openai.com/api/docs/guides/function-calling>
 - <https://developers.openai.com/api/docs/guides/structured-outputs>
 - <https://developers.openai.com/api/docs/guides/tools-web-search>
+- <https://developers.openai.com/api/docs/guides/latest-model#using-reasoning-models>
+- <https://developers.openai.com/api/docs/libraries#install-the-agents-sdk>
 - <https://github.com/openai/simple-evals>
 - <https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview>
 - <https://ai.google.dev/gemini-api/docs/function-calling>
@@ -118,10 +122,37 @@
 - prompt 或 resource template refresh coordination 与更丰富的缓存元数据
 - prompt-detail refresh telemetry 与 diff-aware invalidation
 
+Federation 继续对齐公开 A2A surface，而不是走私有传输：
+
+- 让 well-known agent-card discovery、send、sendSubscribe、resubscribe、task events 与 push notification config 继续出现在 real-network matrix 里
+- 把 signed callback 与 task authorization 证据保留在 report 中，而不是只看 headline pass/fail
+- host-gated 的 container / microVM 行如果缺少依赖，继续显示为 skipped coverage gap，不要静默删除
+
+## Observability 与 Storage Contracts
+
+下一层 runtime hardening 应该从 raw event log 继续走向 trace contracts：
+
+- 把 `runs list`、`runs show`、`traces export` 保持为主要排障入口
+- run、graph node、agent turn、model call、tool call、MCP call、approval、harness 与 federation 边界都要保留稳定 span id
+- 每个 span 记录 duration、status、input/output hash、retry count 与 checkpoint id
+- storage repository contracts 要保持显式，这样未来 PostgreSQL 可以实现同一套 run、session、checkpoint、human-request、MCP、federation、workbench 与 trace 接口
+- 等本地 JSON trace 语义稳定后，再映射到 OpenTelemetry GenAI spans
+
+## Executor Trust Boundary
+
+Executor report 应继续说明每个 backend 隔离什么、不隔离什么：
+
+- process executor 是开发和可信 workload 路径，本身不是生产 sandbox
+- container executor 需要报告 bind mounts、runtime network defaults、resource constraints、env injection 与 checkpoint-image 行为
+- microVM executor 需要报告 guest sync boundary、SSH command channel、host dependencies 与 snapshot drift
+- real-network 行应该继续把性能 telemetry 与安全断言放在一起，避免 warm-start 成功掩盖隔离假设不足
+
 参考：
 
 - <https://modelcontextprotocol.io/specification/2025-03-26/server/resources>
 - <https://modelcontextprotocol.io/specification/2025-11-25/schema>
+- <https://a2a-protocol.org/latest/specification/>
+- <https://opentelemetry.io/docs/specs/semconv/gen-ai/>
 
 ## 文档策略
 

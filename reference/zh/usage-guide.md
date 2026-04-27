@@ -31,6 +31,9 @@ uv run easy-agent doctor -c easy-agent.yml
 uv run easy-agent teams list -c configs/teams.example.yml
 uv run easy-agent harness list -c configs/harness.example.yml
 uv run easy-agent federation list -c easy-agent.yml
+uv run easy-agent runs list -c easy-agent.yml
+uv run easy-agent runs show <run_id> -c easy-agent.yml
+uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -39,6 +42,17 @@ uv run easy-agent mcp resources unsubscribe <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp prompts list <server> -c easy-agent.yml
 uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"notes"}' -c easy-agent.yml
 ```
+
+## Run 与 Trace 检查
+
+耐用 run 检查现在分成两层：
+
+- `runs list` 展示最近 run id、status、kind、session id 与创建时间。
+- `runs show <run_id>` 返回 run summary，包括 event、node、checkpoint、approval 与 child-run 数量。
+- `traces export <run_id>` 默认返回结构化 trace tree。
+- `traces export <run_id> --raw` 返回历史 raw trace payload。
+
+Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_id`、`parent_span_id`、`kind`、`status`、duration、input/output hash、retry count、checkpoint id 与 child spans。这样当前 JSON trace 仍然轻量，同时为后续 OpenTelemetry export 留出路径。
 
 ## 本地凭据
 
@@ -171,6 +185,16 @@ grader 说明：
 - `mcp prompts get <server> <prompt-name>` 现在会按 prompt name + arguments 持久化 prompt detail cache。
 - `notifications/resources/list_changed` 会同时刷新 resource entries 和 resource templates。
 - `notifications/prompts/list_changed` 会刷新 prompt summaries，并把已有的 prompt detail cache 标记成 stale，直到下一次重新获取。
+
+## Executor Capability Reports
+
+`doctor` 和 `workbench list` 可以复用每个 executor backend 的 `capability_report`：
+
+- process：workbench-root 作用域，网络与进程行为仍跟随 host process。
+- container：bind-mounted workbench root、显式 command environment、force-remove shutdown，以及启用时的 checkpoint image restore。
+- microVM：guest workdir sync boundary、SSH command channel，以及启用时的 runtime-state 或 guest-sync restore。
+
+这些报告是操作层面的安全断言，不是形式化 sandbox 证明。生产部署仍然需要继续加固 host runtime、镜像、网络策略和 secret 注入路径。
 
 ## 操作说明
 

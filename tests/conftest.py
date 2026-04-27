@@ -7,17 +7,18 @@ from uuid import uuid4
 
 import pytest
 
-_TEST_TEMP_ROOT = Path(tempfile.gettempdir()) / 'easy-agent-pytest' / 'repo-tests'
+_TEST_TEMP_PARENT = Path(tempfile.gettempdir()) / 'easy-agent-pytest'
 
 
 @pytest.fixture(scope='session', autouse=True)
 def _session_temp_root() -> Path:
-    _TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
-    os.environ['TMP'] = str(_TEST_TEMP_ROOT)
-    os.environ['TEMP'] = str(_TEST_TEMP_ROOT)
-    os.environ['TMPDIR'] = str(_TEST_TEMP_ROOT)
-    tempfile.tempdir = str(_TEST_TEMP_ROOT)
-    return _TEST_TEMP_ROOT
+    root = _TEST_TEMP_PARENT / f'repo-tests-{uuid4().hex}'
+    root.mkdir(parents=True, exist_ok=False)
+    os.environ['TMP'] = str(root)
+    os.environ['TEMP'] = str(root)
+    os.environ['TMPDIR'] = str(root)
+    tempfile.tempdir = str(root)
+    return root
 
 
 @pytest.fixture

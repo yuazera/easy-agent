@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
+from typer.testing import CliRunner
+
+from agent_cli.app import app
 from agent_cli.commands.general import _doctor_rows, _entrypoint_type, _mcp_transport_summary
 from agent_common.version import runtime_version
 from agent_config.app import AppConfig, ModelConfig
 from agent_integrations.sandbox import SandboxMode
+from agent_runtime import build_runtime
 
 
 class FakeWorkbenchManager:
@@ -134,4 +139,36 @@ def test_doctor_rows_include_runtime_stack_details() -> None:
     assert rows['Output Guardrails'] == 'require_non_empty_output, block_secret_leaks'
     assert rows['Event Stream'] == 'True'
     assert rows['Sandbox Fallback'] == 'process'
+
+
+def test_runs_and_traces_cli_export_storage_records(tmp_path: Path) -> None:
+    config_path = tmp_path / 'easy-agent.yml'
+    storage_path = str(tmp_path / 'state').replace('\\', '/')
+    config_path.write_text(
+        f"""
+graph:
+  entrypoint: agent_a
+  agents:
+    - name: agent_a
+storage:
+  path: {storage_path}
+  database: state.db
+""",
+        encoding='utf-8',
+    )
+    runtime = build_runtime(config_path)
+    runtime.store.create_run('run_cli', 'baseline', {'input': 'hello'})
+    runtime.store.record_event('run_cli', 'run_started', {'input': 'hello'}, span_id='run:run_cli')
+
+    runner = CliRunner()
+    list_result = runner.invoke(app, ['runs', 'list', '-c', str(config_path)])
+    show_result = runner.invoke(app, ['runs', 'show', 'run_cli', '-c', str(config_path)])
+    trace_result = runner.invoke(app, ['traces', 'export', 'run_cli', '-c', str(config_path)])
+
+    assert list_result.exit_code == 0
+    assert 'run_cli' in list_result.output
+    assert show_result.exit_code == 0
+    assert '"run_id": "run_cli"' in show_result.output
+    assert trace_result.exit_code == 0
+    assert '"tree"' in trace_result.output
 

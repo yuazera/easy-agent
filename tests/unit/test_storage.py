@@ -2,24 +2,48 @@ from pathlib import Path
 
 from agent_common.models import ChatMessage, HumanRequestStatus
 from agent_integrations.storage import SQLiteRunStore
+from agent_integrations.storage_contracts import RunRepository, TraceRepository
 
 
 def test_sqlite_run_store_persists_trace(tmp_path: Path) -> None:
     store = SQLiteRunStore(tmp_path, 'state.db')
     store.create_run('run_1', 'baseline', {'input': 'hello'})
     store.record_node('run_1', 'node_1', 'succeeded', 1, {'value': 1}, None)
-    store.record_event('run_1', 'custom', {'value': 2}, scope='agent', node_id='node_1', span_id='span-1')
+    store.record_event('run_1', 'agent_started', {'prompt': 'hello'}, scope='agent', node_id='node_1', span_id='agent:node_1')
+    store.record_event('run_1', 'agent_succeeded', {'value': 2}, scope='agent', node_id='node_1', span_id='agent:node_1')
     store.finish_run('run_1', 'succeeded', {'result': 'ok'})
 
     trace = store.load_trace('run_1')
+    tree = store.load_trace_tree('run_1')
+    runs = store.list_runs()
+    summary = store.load_run_summary('run_1')
 
     assert trace['status'] == 'succeeded'
     assert trace['run_kind'] == 'graph'
     assert trace['nodes'][0]['node_id'] == 'node_1'
-    assert trace['events'][0]['kind'] == 'custom'
+    assert trace['events'][0]['kind'] == 'agent_started'
     assert trace['events'][0]['scope'] == 'agent'
     assert trace['events'][0]['node_id'] == 'node_1'
     assert trace['events'][0]['sequence'] == 1
+    assert runs[0]['run_id'] == 'run_1'
+    assert summary['event_count'] == 2
+    assert tree['run']['run_id'] == 'run_1'
+    assert tree['spans'][0]['kind'] == 'agent'
+    assert tree['spans'][0]['status'] == 'succeeded'
+    assert tree['spans'][0]['input_hash']
+    assert tree['spans'][0]['output_hash']
+
+
+def test_sqlite_run_store_satisfies_storage_contracts(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path, 'state.db')
+    run_repo: RunRepository = store
+    trace_repo: TraceRepository = store
+
+    run_repo.create_run('run_contract', 'baseline', {'input': 'hello'})
+    trace_repo.record_event('run_contract', 'run_started', {'input': 'hello'}, span_id='run:run_contract')
+
+    assert run_repo.load_run_summary('run_contract')['run_id'] == 'run_contract'
+    assert trace_repo.load_trace_tree('run_contract')['spans'][0]['span_id'] == 'run:run_contract'
 
 
 

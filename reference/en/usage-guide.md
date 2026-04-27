@@ -31,6 +31,9 @@ uv run easy-agent doctor -c easy-agent.yml
 uv run easy-agent teams list -c configs/teams.example.yml
 uv run easy-agent harness list -c configs/harness.example.yml
 uv run easy-agent federation list -c easy-agent.yml
+uv run easy-agent runs list -c easy-agent.yml
+uv run easy-agent runs show <run_id> -c easy-agent.yml
+uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -39,6 +42,17 @@ uv run easy-agent mcp resources unsubscribe <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp prompts list <server> -c easy-agent.yml
 uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"notes"}' -c easy-agent.yml
 ```
+
+## Run and Trace Inspection
+
+Durable run inspection now has two layers:
+
+- `runs list` shows recent run ids, status, kind, session id, and creation time.
+- `runs show <run_id>` returns a run summary with event, node, checkpoint, approval, and child-run counts.
+- `traces export <run_id>` returns a structured trace tree by default.
+- `traces export <run_id> --raw` returns the historical raw trace payload.
+
+Trace-tree spans are derived from the existing runtime event envelope and include stable `span_id`, `parent_span_id`, `kind`, `status`, duration, input/output hashes, retry count, checkpoint id, and child spans. This keeps the current JSON trace path lightweight while leaving a future OpenTelemetry export path open.
 
 ## Local Credentials
 
@@ -171,6 +185,16 @@ Current interpretation rules:
 - `mcp prompts get <server> <prompt-name>` persists durable prompt-detail cache entries keyed by prompt name plus arguments.
 - `notifications/resources/list_changed` refreshes both resource entries and resource templates.
 - `notifications/prompts/list_changed` refreshes prompt summaries and marks cached prompt-detail entries as stale until they are fetched again.
+
+## Executor Capability Reports
+
+`doctor` and `workbench list` surfaces can use executor `capability_report` details from each configured backend:
+
+- process: workbench-root scoping with host-process network and process behavior
+- container: bind-mounted workbench root, explicit command environment, force-remove shutdown, and checkpoint image restore when enabled
+- microVM: guest workdir sync boundary, SSH command channel, and runtime-state or guest-sync restore when enabled
+
+Treat these reports as operational claims rather than a formal sandbox proof. Production deployments should still harden the host runtime, images, network policy, and secret injection path.
 
 ## Operational Notes
 

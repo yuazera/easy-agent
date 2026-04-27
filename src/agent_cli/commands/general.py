@@ -18,6 +18,8 @@ from agent_protocols import resolve_protocol
 from agent_runtime import EasyAgentRuntime, build_runtime
 
 console = Console()
+runs_app = typer.Typer(help='Inspect durable run records.')
+traces_app = typer.Typer(help='Export structured run traces.')
 
 
 
@@ -110,6 +112,60 @@ def _configure_inline_resolver(runtime: EasyAgentRuntime, approval_mode: HumanLo
         runtime.set_inline_approval_resolver(None)
         return
     runtime.set_inline_approval_resolver(build_cli_inline_resolver(console))
+
+
+@runs_app.command('list')
+def list_runs(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    limit: int = typer.Option(20, '--limit', min=1, max=500),
+    status: str | None = typer.Option(None, '--status'),
+    run_kind: str | None = typer.Option(None, '--kind'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        table = Table(title='easy-agent runs')
+        table.add_column('Run ID', style='cyan')
+        table.add_column('Kind', style='green')
+        table.add_column('Status', style='yellow')
+        table.add_column('Session', style='magenta')
+        table.add_column('Created', style='blue')
+        for run in runtime.store.list_runs(limit=limit, status=status, run_kind=run_kind):
+            table.add_row(
+                str(run['run_id']),
+                str(run['run_kind']),
+                str(run['status']),
+                str(run.get('session_id') or '-'),
+                str(run['created_at']),
+            )
+        console.print(table)
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@runs_app.command('show')
+def show_run(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        console.print_json(json.dumps(runtime.store.load_run_summary(run_id), ensure_ascii=False))
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@traces_app.command('export')
+def export_trace(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    tree: bool = typer.Option(True, '--tree/--raw', help='Export structured trace tree by default, or raw trace with --raw.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = runtime.store.load_trace_tree(run_id) if tree else runtime.store.load_trace(run_id)
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+    finally:
+        asyncio.run(runtime.aclose())
 
 
 

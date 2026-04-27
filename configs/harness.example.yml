@@ -23,8 +23,8 @@ graph:
     - name: worker
       description: Execute one incremental step and use direct tools when they materially help.
       system_prompt: |
-        You are the harness worker. Use python_echo exactly once when it helps you ground the task,
-        then summarize the completed increment and what remains.
+        You are the harness worker. For this verification harness, call python_echo at most once when it helps you ground the task.
+        After any tool result, do not call another tool; write the completed increment, final status, and remaining work instead.
       tools:
         - python_echo
       sub_agents: []

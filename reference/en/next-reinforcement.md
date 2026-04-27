@@ -4,6 +4,8 @@ This roadmap starts from the published `0.3.5` baseline.
 
 ## Immediate Focus
 
+- Keep reducing runtime complexity by turning large compatibility modules into smaller import-compatible surfaces, with storage contracts and trace helpers split away from SQLite details.
+- Promote the new run summary and trace-tree export into the main debugging workflow, then align the JSON trace shape with OpenTelemetry GenAI semantic conventions when the local shape stabilizes.
 - Widen the shipped live provider-specific compatibility evidence beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini coverage when credentials are present.
 - Extend the raw official BFCL v4 normalization path into wider agentic and multihop coverage with clearer official-category diagnostics.
 - Turn the newly shipped `official_source_search` plus `browsecomp_subset` / `simpleqa_subset` support into refreshable scored slices once local dataset exports and grader credentials are available.
@@ -88,6 +90,8 @@ Reference:
 - <https://developers.openai.com/api/docs/guides/function-calling>
 - <https://developers.openai.com/api/docs/guides/structured-outputs>
 - <https://developers.openai.com/api/docs/guides/tools-web-search>
+- <https://developers.openai.com/api/docs/guides/latest-model#using-reasoning-models>
+- <https://developers.openai.com/api/docs/libraries#install-the-agents-sdk>
 - <https://github.com/openai/simple-evals>
 - <https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview>
 - <https://ai.google.dev/gemini-api/docs/function-calling>
@@ -118,10 +122,37 @@ Next reinforcement should continue around the official MCP surface:
 - prompt or resource template refresh coordination and richer cached metadata
 - prompt-detail refresh telemetry and diff-aware invalidation
 
+Federation should continue to track the public A2A surface rather than inventing a private transport:
+
+- keep well-known agent-card discovery, send, sendSubscribe, resubscribe, task events, and push notification config flows visible in the real-network matrix
+- keep signed callback and task authorization evidence in the report instead of relying on headline pass/fail
+- keep skipped host-gated rows visible so missing container or microVM dependencies are reported as coverage gaps, not silent omissions
+
+## Observability and Storage Contracts
+
+The next runtime-hardening layer should move from raw event logs toward trace contracts:
+
+- keep `runs list`, `runs show`, and `traces export` as the primary debugging surface
+- keep span ids stable across run, graph node, agent turn, model call, tool call, MCP call, approval, harness, and federation boundaries
+- record duration, status, input/output hashes, retry count, and checkpoint id on each span
+- keep storage repository contracts explicit so future PostgreSQL support can implement the same run, session, checkpoint, human-request, MCP, federation, workbench, and trace interfaces
+- map the stable JSON trace shape to OpenTelemetry GenAI spans only after local semantics stop moving
+
+## Executor Trust Boundary
+
+Executor reports should keep describing what each backend does and does not isolate:
+
+- process executor is a development and trusted-workload path, not a production sandbox by itself
+- container executor must report bind mounts, runtime network defaults, resource constraints, env injection, and checkpoint-image behavior
+- microVM executor must report guest sync boundaries, SSH command channel behavior, host dependencies, and snapshot drift
+- real-network rows should keep pairing performance telemetry with safety assertions so warm-start success does not hide weak isolation assumptions
+
 Reference:
 
 - <https://modelcontextprotocol.io/specification/2025-03-26/server/resources>
 - <https://modelcontextprotocol.io/specification/2025-11-25/schema>
+- <https://a2a-protocol.org/latest/specification/>
+- <https://opentelemetry.io/docs/specs/semconv/gen-ai/>
 
 ## Documentation Policy
 

@@ -18,12 +18,14 @@ class RealNetworkRecord:
     duration_seconds: float
     notes: str
     telemetry: dict[str, Any] = field(default_factory=dict)
+    proof: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class ScenarioOutcome:
     notes: str
     telemetry: dict[str, Any] = field(default_factory=dict)
+    proof: dict[str, Any] = field(default_factory=dict)
 
 
 class CallbackCollector:

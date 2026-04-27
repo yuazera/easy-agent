@@ -108,6 +108,19 @@ Warm-start telemetry summary：
 | telemetry.snapshot_drift_ratio_average | 0.4047 |
 | telemetry.snapshot_drift_ratio_max | 0.5943 |
 
+每条 real-network record 现在都会带场景证明字段，让分数行可以追溯到可执行的场景契约：
+
+| 场景 | Command | Expected Artifact | Pass Criteria |
+| --- | --- | --- | --- |
+| resume after failure | `uv run easy-agent integration real-network` | real-network report row for replay/resume failure injection | checkpoint replay 或 resume 完成，并且不重复执行已完成工作 |
+| human approval pending then continue | `uv run easy-agent run ... --approval-mode deferred` 加 `uv run easy-agent approvals approve ...` | run summary、approval record 与 trace tree | 敏感操作进入 durable approval，并在批准后继续 |
+| MCP server restart | transport refresh 后执行 `uv run easy-agent mcp resources list ...` | MCP catalog snapshot 与 subscription state | catalog entries、prompt details 与 subscription state 能跨 refresh 或 restart 保留 |
+| provider tool schema rejection then repair | `uv run easy-agent integration public-eval --profile full_v4` | public-eval provider matrix 与 failure-stage diagnostics | provider schema rejection 进入 strict-schema repair 或被标成明确的 best-effort 证据 |
+| federation disconnect and retry | `uv run easy-agent integration real-network` | real-network row for disconnect retry chaos | callback retry、signed delivery、sendSubscribe 与 resubscribe 保持耐用 |
+| workbench snapshot restore | `uv run easy-agent integration real-network` | real-network workbench restore rows | process、container 或 microVM session 在配置预算内恢复状态 |
+
+同一份报告也会在 executor 和 federation 行里携带安全断言，包括凭据不落盘、loopback-only 测试 server、signed callback verification、scoped workbench roots 和显式 host-gated dependencies。
+
 ## 同类 Agent 项目对比
 
 README 只保留高层摘要，本页保留公开证据映射。
@@ -130,5 +143,6 @@ README 只保留高层摘要，本页保留公开证据映射。
 - 全量 real integration：`7 passed`、`2 warnings`
 - 保留的 benchmark 与 public-eval headline 分数仍指向 4 月 14 日发布快照，而 real-network artifact 与 live provider compatibility 证据在 4 月 20 日重新刷新
 - 剩余 warning 仍然是 Windows asyncio subprocess cleanup 的已知问题，不属于功能失败
+- 新增 focused regressions 覆盖 run listing、run summary、structured trace tree export、executor capability reports、storage contracts 与 real-network scenario proof metadata。
 
 机器本地的完整执行日志不进入仓库公开文档。

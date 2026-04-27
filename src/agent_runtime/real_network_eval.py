@@ -189,11 +189,13 @@ _CROSS_PROCESS_SERVER = textwrap.dedent(
 def _record(scenario: str, transport: str, host_dependency: str, runner: Any, *, live_model: bool = False) -> RealNetworkRecord:
     start = time.perf_counter()
     telemetry: dict[str, Any] = {}
+    proof = _scenario_proof(scenario)
     try:
         outcome = runner()
         if isinstance(outcome, ScenarioOutcome):
             notes = outcome.notes
             telemetry = dict(outcome.telemetry)
+            proof = {**proof, **outcome.proof}
         else:
             notes = str(outcome)
         status = 'passed'
@@ -212,7 +214,74 @@ def _record(scenario: str, transport: str, host_dependency: str, runner: Any, *,
         duration_seconds=round(time.perf_counter() - start, 4),
         notes=notes,
         telemetry=telemetry,
+        proof=proof,
     )
+
+
+def _scenario_proof(scenario: str) -> dict[str, Any]:
+    matrix: dict[str, dict[str, Any]] = {
+        'cross_process_federation': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: cross_process_federation',
+            'pass_criteria': 'well-known discovery and send/poll federation complete across process boundary',
+            'security_assertions': ['loopback-only server', 'no credential material in report'],
+        },
+        'live_model_federation_roundtrip': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: live_model_federation_roundtrip',
+            'pass_criteria': 'local A2A surface completes a live-model loopback task',
+            'security_assertions': ['API key read from environment only', 'report stores preflight status, not secret value'],
+        },
+        'disconnect_retry_chaos': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: disconnect_retry_chaos',
+            'pass_criteria': 'callback retry, push config, signed delivery, sendSubscribe, and resubscribe all pass',
+            'security_assertions': ['callback signatures verified', 'retry state remains durable'],
+        },
+        'duplicate_delivery_replay_resilience': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: duplicate_delivery_replay_resilience',
+            'pass_criteria': 'duplicate delivery does not corrupt task event ordering or replay safety',
+            'security_assertions': ['signed callback replay is rejected or deduplicated', 'event log remains append-only'],
+        },
+        'workbench_reuse_process': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: workbench_reuse_process',
+            'pass_criteria': 'same process workbench root is reused across commands',
+            'security_assertions': ['restricted to configured workbench root', 'uses sandbox command policy'],
+        },
+        'workbench_reuse_container': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: workbench_reuse_container',
+            'pass_criteria': 'container warm start and snapshot restore remain within configured budgets',
+            'security_assertions': ['workbench root bind mount only', 'resource quotas are applied when configured'],
+        },
+        'workbench_incremental_snapshot_reuse_container': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: workbench_incremental_snapshot_reuse_container',
+            'pass_criteria': 'container snapshot restore preserves incremental state across restart cycles',
+            'security_assertions': ['snapshot image is scoped to session', 'state drift is reported'],
+        },
+        'workbench_reuse_microvm': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: workbench_reuse_microvm',
+            'pass_criteria': 'microVM-backed session reconnects and restores state within budget',
+            'security_assertions': ['guest workdir sync boundary is explicit', 'SSH command channel is host-gated'],
+        },
+        'workbench_incremental_snapshot_reuse_microvm': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: workbench_incremental_snapshot_reuse_microvm',
+            'pass_criteria': 'microVM incremental snapshot reuse preserves state across repeated cycles',
+            'security_assertions': ['snapshot drift is reported', 'host dependency is explicit'],
+        },
+        'replay_resume_failure_injection': {
+            'command': 'uv run easy-agent integration real-network',
+            'expected_artifact': 'real-network report record: replay_resume_failure_injection',
+            'pass_criteria': 'checkpoint replay/resume failure injection completes without rerunning completed work',
+            'security_assertions': ['lineage is recorded', 'checkpoint state remains durable'],
+        },
+    }
+    return dict(matrix.get(scenario, {'command': 'uv run easy-agent integration real-network', 'expected_artifact': f'real-network report record: {scenario}', 'pass_criteria': 'scenario passed'}))
 
 
 def _run(command: list[str], *, timeout_seconds: float = 60.0) -> subprocess.CompletedProcess[str]:

@@ -59,6 +59,9 @@ def test_build_executor_backends_supports_multiple_kinds() -> None:
     assert set(backends) == {'process', 'containerized', 'microvm-qemu'}
     assert backends['containerized'].kind == 'container'
     assert backends['microvm-qemu'].kind == 'microvm'
+    assert backends['process'].describe()['capability_report']['filesystem_isolation'] == 'workbench_root_only'
+    assert backends['containerized'].describe()['capability_report']['snapshot_restore_guarantee'] == 'checkpoint_image_when_enabled'
+    assert backends['microvm-qemu'].describe()['capability_report']['env_allowlist'] == 'per_command_explicit_env'
 
 
 

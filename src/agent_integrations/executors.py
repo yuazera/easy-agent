@@ -87,6 +87,14 @@ class ProcessExecutorBackend:
             'kind': self.kind,
             'available': True,
             'details': {'mode': self._sandbox_manager.mode.value},
+            'capability_report': {
+                'filesystem_isolation': 'workbench_root_only',
+                'network_policy': 'host_process_default',
+                'env_allowlist': 'sandbox_manager_enforced',
+                'process_kill_behavior': 'host_process_tree_best_effort',
+                'snapshot_restore_guarantee': 'not_supported',
+                'production_suitability': 'development_or_trusted_workloads',
+            },
         }
 
     def ensure_session(self, session: ExecutorSession) -> dict[str, Any]:
@@ -163,6 +171,14 @@ class ContainerExecutorBackend:
                 'memory_mb': self._container.memory_mb,
                 'cpus': self._container.cpus,
                 'workdir': self._container.workdir,
+            },
+            'capability_report': {
+                'filesystem_isolation': 'bind_mounted_workbench_root',
+                'network_policy': 'container_runtime_default',
+                'env_allowlist': 'per_command_explicit_env',
+                'process_kill_behavior': 'container_rm_force_on_shutdown',
+                'snapshot_restore_guarantee': 'checkpoint_image_when_enabled',
+                'production_suitability': 'stronger_than_process_when_image_and_runtime_are_hardened',
             },
         }
 
@@ -407,6 +423,14 @@ class MicrovmExecutorBackend:
                 'memory_mb': self._microvm.memory_mb,
                 'cpus': self._microvm.cpus,
                 'checkpoint_enabled': self._microvm.checkpoint_enabled,
+            },
+            'capability_report': {
+                'filesystem_isolation': 'guest_workdir_sync_boundary',
+                'network_policy': 'guest_or_podman_machine_default',
+                'env_allowlist': 'per_command_explicit_env',
+                'process_kill_behavior': 'ssh_process_or_vm_shutdown_best_effort',
+                'snapshot_restore_guarantee': 'runtime_state_and_guest_sync_when_enabled',
+                'production_suitability': 'strongest_available_boundary_after_host_hardening',
             },
         }
 

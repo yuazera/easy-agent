@@ -2,6 +2,8 @@ from agent_runtime.real_network_eval import (
     RealNetworkRecord,
     _aggregate_telemetry_summary,
     _budget_status,
+    _record,
+    _scenario_proof,
     _snapshot_drift,
 )
 
@@ -59,3 +61,18 @@ def test_aggregate_telemetry_summary_collects_cache_and_drift_metrics() -> None:
     assert summary['budget_statuses']['within_budget'] == 1
     assert summary['budget_statuses']['exceeds_budget'] == 1
     assert summary['snapshot_drift_ratio_max'] == 0.3
+
+
+def test_real_network_records_include_scenario_proof() -> None:
+    record = _record('replay_resume_failure_injection', 'sqlite_checkpoint', 'none', lambda: 'ok')
+
+    assert record.status == 'passed'
+    assert record.proof['expected_artifact'] == 'real-network report record: replay_resume_failure_injection'
+    assert 'checkpoint' in record.proof['pass_criteria']
+
+
+def test_scenario_proof_documents_unknown_scenarios() -> None:
+    proof = _scenario_proof('custom_scenario')
+
+    assert proof['command'] == 'uv run easy-agent integration real-network'
+    assert proof['expected_artifact'] == 'real-network report record: custom_scenario'

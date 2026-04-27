@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -15,6 +16,7 @@ from agent_common.models import (
     HumanRequestStatus,
     RunStatus,
     RuntimeEvent,
+    RuntimeTraceSpan,
 )
 from agent_integrations.storage_utils import (
     decode_payload as _decode,
@@ -362,6 +364,58 @@ class SQLiteRunStore:
             'source_run_id': row[8],
             'source_checkpoint_id': row[9],
             'resume_strategy': row[10],
+        }
+
+    def list_runs(self, limit: int = 50, status: str | None = None, run_kind: str | None = None) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 500))
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status:
+            clauses.append('status = ?')
+            params.append(status)
+        if run_kind:
+            clauses.append('run_kind = ?')
+            params.append(run_kind)
+        where = f'WHERE {" AND ".join(clauses)}' if clauses else ''
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                (
+                    'SELECT run_id, graph_name, status, created_at, session_id, run_kind, '
+                    'parent_run_id, source_run_id, source_checkpoint_id, resume_strategy '
+                    f'FROM runs {where} ORDER BY created_at DESC LIMIT ?'
+                ),
+                [*params, limit],
+            ).fetchall()
+        return [
+            {
+                'run_id': row[0],
+                'graph_name': row[1],
+                'status': row[2],
+                'created_at': row[3],
+                'session_id': row[4],
+                'run_kind': row[5] or 'graph',
+                'parent_run_id': row[6],
+                'source_run_id': row[7],
+                'source_checkpoint_id': row[8],
+                'resume_strategy': row[9],
+            }
+            for row in rows
+        ]
+
+    def load_run_summary(self, run_id: str) -> dict[str, Any]:
+        run = self.load_run(run_id)
+        with closing(self._connect()) as connection:
+            event_count = connection.execute('SELECT COUNT(*) FROM events WHERE run_id = ?', (run_id,)).fetchone()[0]
+            node_count = connection.execute('SELECT COUNT(*) FROM node_events WHERE run_id = ?', (run_id,)).fetchone()[0]
+            checkpoint_count = connection.execute('SELECT COUNT(*) FROM checkpoints WHERE run_id = ?', (run_id,)).fetchone()[0]
+            human_count = connection.execute('SELECT COUNT(*) FROM human_requests WHERE run_id = ?', (run_id,)).fetchone()[0]
+        return {
+            **run,
+            'event_count': int(event_count),
+            'node_count': int(node_count),
+            'checkpoint_count': int(checkpoint_count),
+            'human_request_count': int(human_count),
+            'child_run_count': len(self.list_child_runs(run_id)),
         }
 
     def list_child_runs(self, run_id: str) -> list[dict[str, Any]]:
@@ -1459,6 +1513,70 @@ class SQLiteRunStore:
             'human_requests': [item.model_dump() for item in self.list_human_requests(run_id=run_id)],
         }
 
+    def load_trace_tree(self, run_id: str) -> dict[str, Any]:
+        trace = self.load_trace(run_id)
+        checkpoints_by_kind = {
+            str(item['kind']): int(item['checkpoint_id'])
+            for item in trace['checkpoints']
+            if item.get('checkpoint_id') is not None
+        }
+        spans: dict[str, dict[str, Any]] = {}
+        roots: list[str] = []
+        for event in trace['events']:
+            span_id = str(event.get('span_id') or f"event:{event.get('sequence', len(spans) + 1)}")
+            parent_span_id = event.get('parent_span_id')
+            payload = dict(event.get('payload') or {})
+            span = spans.setdefault(
+                span_id,
+                {
+                    'span_id': span_id,
+                    'parent_span_id': parent_span_id,
+                    'kind': self._span_kind(span_id, str(event.get('scope') or 'runtime')),
+                    'name': self._span_name(span_id),
+                    'status': 'running',
+                    'started_at': event['created_at'],
+                    'ended_at': None,
+                    'duration_seconds': None,
+                    'input_hash': None,
+                    'output_hash': None,
+                    'retry_count': 0,
+                    'checkpoint_id': None,
+                    'attributes': {'events': []},
+                    'children': [],
+                },
+            )
+            if span['parent_span_id'] is None and parent_span_id is not None:
+                span['parent_span_id'] = parent_span_id
+            span['ended_at'] = event['created_at']
+            span['status'] = self._span_status(str(event.get('kind') or ''), span['status'])
+            if event.get('kind') == 'checkpoint_created':
+                span['checkpoint_id'] = payload.get('checkpoint_id') or checkpoints_by_kind.get(str(payload.get('kind') or ''))
+            if event.get('kind') and 'retry' in str(event['kind']):
+                span['retry_count'] = int(span.get('retry_count') or 0) + 1
+            self._maybe_set_span_hashes(span, str(event.get('kind') or ''), payload)
+            span['attributes']['events'].append(
+                {
+                    'sequence': event.get('sequence'),
+                    'kind': event.get('kind'),
+                    'timestamp': event.get('created_at'),
+                    'payload_hash': self._payload_hash(payload),
+                }
+            )
+        for span in spans.values():
+            span['duration_seconds'] = self._duration_seconds(span['started_at'], span['ended_at'])
+        for span_id, span in spans.items():
+            parent = span.get('parent_span_id')
+            if parent and parent in spans:
+                spans[parent]['children'].append(span)
+            else:
+                roots.append(span_id)
+        return {
+            'run': self.load_run_summary(run_id),
+            'spans': [RuntimeTraceSpan(**{key: value for key, value in span.items() if key != 'children'}).model_dump() for span in spans.values()],
+            'tree': [spans[root] for root in roots],
+            'events': trace['events'],
+        }
+
     def _build_event(
         self,
         run_id: str,
@@ -1511,5 +1629,56 @@ class SQLiteRunStore:
     @staticmethod
     def _upsert_session(connection: sqlite3.Connection, session_id: str, graph_name: str, updated_at: str) -> None:
         _upsert_session(connection, session_id, graph_name, updated_at)
+
+    @staticmethod
+    def _payload_hash(payload: Any) -> str:
+        encoded = json_dumps_for_hash(payload)
+        return hashlib.sha256(encoded.encode('utf-8')).hexdigest()[:16]
+
+    @staticmethod
+    def _span_kind(span_id: str, fallback: str) -> str:
+        return span_id.split(':', 1)[0] if ':' in span_id else fallback
+
+    @staticmethod
+    def _span_name(span_id: str) -> str:
+        return span_id.split(':', 1)[1] if ':' in span_id else span_id
+
+    @staticmethod
+    def _span_status(event_kind: str, current: str) -> str:
+        if event_kind.endswith('_failed') or event_kind in {'tool_error', 'run_failed'}:
+            return 'failed'
+        if event_kind.endswith('_interrupted') or event_kind == 'run_interrupted':
+            return 'interrupted'
+        if event_kind.endswith('_waiting_approval') or event_kind == 'run_waiting_approval':
+            return 'waiting_approval'
+        if event_kind.endswith('_succeeded') or event_kind in {'tool_result', 'team_finish', 'run_succeeded'}:
+            return 'succeeded'
+        return current
+
+    @staticmethod
+    def _maybe_set_span_hashes(span: dict[str, Any], event_kind: str, payload: dict[str, Any]) -> None:
+        if span.get('input_hash') is None and any(token in event_kind for token in ('start', 'request', 'call')):
+            span['input_hash'] = SQLiteRunStore._payload_hash(payload)
+        if any(token in event_kind for token in ('result', 'succeeded', 'finish', 'failed', 'waiting_approval')):
+            span['output_hash'] = SQLiteRunStore._payload_hash(payload)
+
+    @staticmethod
+    def _duration_seconds(started_at: str, ended_at: str | None) -> float | None:
+        if not ended_at:
+            return None
+        try:
+            from datetime import datetime
+
+            start = datetime.fromisoformat(started_at)
+            end = datetime.fromisoformat(ended_at)
+            return round(max(0.0, (end - start).total_seconds()), 4)
+        except ValueError:
+            return None
+
+
+def json_dumps_for_hash(payload: Any) -> str:
+    import json
+
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
 
 

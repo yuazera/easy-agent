@@ -544,7 +544,8 @@ class HarnessRuntime:
         return (
             'You are the worker for a resumable long-running harness. Work on one meaningful increment only. '
             'Use tools when they materially help. If the task is fully solvable in this cycle, complete it now instead of deferring with generic remaining work. '
-            'Do not repeat the same successful tool call or the same finished step. End with what changed and what remains.\n\n'
+            'Call at most one tool in this worker turn. After any tool result, stop using tools and produce the completed increment. '
+            'Do not repeat the same successful tool call or the same finished step. End with final status, what changed, and what remains.\n\n'
             f'Harness: {harness.name}\n'
             f'Cycle: {cycle}\n'
             f'Goal: {input_text}\n'

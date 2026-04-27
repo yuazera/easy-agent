@@ -9,6 +9,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- Added durable run-inspection and structured trace export surfaces:
+  - `easy-agent runs list`
+  - `easy-agent runs show`
+  - `easy-agent traces export`
+- Added trace-tree generation from existing runtime event envelopes with span status, duration, input/output hashes, retry count, checkpoint id, and parent/child structure.
+- Added explicit storage contract protocols for run, session, checkpoint, human-request, trace, workbench, and federation persistence surfaces.
+- Added executor capability reports for process, container, and microVM backends.
+- Added scenario proof metadata to real-network records, including command, expected artifact, pass criteria, and security assertions.
 - Added a practical official-source search integration under:
   - `src/agent_integrations/official_source_search.py`
   - `skills/examples/official_source_search/`
@@ -28,6 +36,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Extended real-network reporting so scenario proof and safety assertions sit beside performance telemetry instead of relying only on headline score rows.
+- Updated the bilingual README pair and reference docs to keep scores while adding scenario-proof framing for resume, approvals, MCP restart, provider schema repair, federation retry, and workbench snapshot restore.
+- Extended the CLI integration surface with `easy-agent integration real-network`.
 - Split the oversized public-eval runtime surface so:
   - `src/agent_runtime/public_eval_core.py` keeps the main implementation
   - `src/agent_runtime/public_eval_simple_evals.py` handles BrowseComp/SimpleQA dataset loading
@@ -43,6 +54,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Verified
 
+- `.\.venv\Scripts\python.exe -m pytest tests/unit/test_storage.py tests/unit/test_cli_general.py tests/unit/test_executors.py tests/unit/test_real_network_eval_unit.py -q` with `19 passed`
+- `.\.venv\Scripts\python.exe -m ruff check` on the new trace, storage, executor, real-network, CLI, and focused test surfaces
+- `.\.venv\Scripts\python.exe -m mypy` on the new trace, storage, executor, real-network, CLI, and focused test surfaces
 - `.\.venv\Scripts\python.exe -m ruff check src tests scripts`
 - `.\.venv\Scripts\python.exe -m mypy src tests scripts`
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_official_source_search.py tests/unit/test_public_eval_simple_evals.py -q` with `4 passed`

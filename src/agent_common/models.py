@@ -55,6 +55,22 @@ class RuntimeEvent(BaseModel):
     node_id: str | None = None
 
 
+class RuntimeTraceSpan(BaseModel):
+    span_id: str
+    parent_span_id: str | None = None
+    kind: str
+    name: str
+    status: str
+    started_at: str
+    ended_at: str | None = None
+    duration_seconds: float | None = None
+    input_hash: str | None = None
+    output_hash: str | None = None
+    retry_count: int = 0
+    checkpoint_id: int | None = None
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
 class RunStatus(StrEnum):
     RUNNING = 'running'
     WAITING_APPROVAL = 'waiting_approval'

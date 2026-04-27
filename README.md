@@ -55,6 +55,7 @@ Most agent projects move quickly from "call a model" to "ship an application". T
 - Support for `single_agent`, `sub_agent`, graph workflows, `Agent Teams`, and long-running harnesses.
 - Session memory, checkpoints, replay, branchable resume, and approval-aware recovery.
 - Guardrails, schema-aware tool validation, runtime event streaming, and persistent traces.
+- Durable run inspection with structured trace-tree export for debugging complex agent flows.
 - A2A-style remote federation with durable task state and signed callback verification.
 - Practical `official_source_search` skill support for source-prioritized search and fetched-page extraction.
 - Public evaluation helpers for benchmark, BFCL, tau2 mock, BrowseComp/SimpleQA-style slices, live provider-compatibility matrices, and real-network regression tracking.
@@ -88,6 +89,7 @@ The executor/workbench layer gives long-lived tools and MCP subprocesses a reusa
 
 - Named executors for `process`, `container`, and `microvm`.
 - Persistent workbench sessions, manifests, snapshots, and TTL cleanup.
+- Capability reports for filesystem boundary, network policy, env handling, process shutdown, and snapshot restore behavior.
 - Real-network regression coverage for warm-start latency and snapshot drift.
 
 Detailed operational notes are documented in [reference/en/usage-guide.md](./reference/en/usage-guide.md).
@@ -192,16 +194,26 @@ The latest published patch remains `0.3.5`. The retained benchmark and headline 
 
 ## Real Network Test Set Results
 
-The real-network matrix is reported as score-only in this README. The score row below was revalidated on April 20, 2026, while durations, telemetry, warm-start budgets, and snapshot-drift detail are tracked in [reference/en/test-results.md](./reference/en/test-results.md).
+The real-network matrix is still summarized by score here, but the report now also carries scenario proof fields: command, expected artifact, pass criteria, and security assertions. Detailed durations, telemetry, warm-start budgets, snapshot-drift detail, and the full scenario matrix are tracked in [reference/en/test-results.md](./reference/en/test-results.md).
 
 | Test Set | Score |
 | --- | ---: |
 | real_network.overall | 100.0 |
 
+| Scenario Proof | Pass Criteria |
+| --- | --- |
+| resume after failure | checkpoint replay or resume completes without rerunning completed work |
+| human approval pending then continue | sensitive work enters durable approval and resumes after approval |
+| MCP server restart | catalog and subscription state survive transport refresh or restart |
+| provider tool schema rejection then repair | provider schema rejection routes through strict-schema repair evidence |
+| federation disconnect and retry | callback retry, signed delivery, subscribe, and resubscribe stay durable |
+| workbench snapshot restore | process, container, or microVM sessions restore state within budget |
+
 ## Next Reinforcement
 
 The next reinforcement track is documented in full at [reference/en/next-reinforcement.md](./reference/en/next-reinforcement.md). The near-term focus remains:
 
+- turning raw event streams into structured trace trees with run listing, run summary, and trace export surfaces
 - widening the shipped live provider-compatibility matrix beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini evidence when credentials are present
 - promoting the new official-source search plus BrowseComp or SimpleQA path into refreshed scored slices once official dataset exports and grader credentials are available
 - expanding live `/responses` compatibility coverage where OpenAI-compatible providers actually expose it, while keeping single-tool enforcement explicitly labeled as best effort when providers do not honor it strictly
@@ -212,11 +224,14 @@ The next reinforcement track is documented in full at [reference/en/next-reinfor
 - OpenAI function calling: <https://developers.openai.com/api/docs/guides/function-calling>
 - OpenAI structured outputs: <https://developers.openai.com/api/docs/guides/structured-outputs>
 - OpenAI web search tool: <https://developers.openai.com/api/docs/guides/tools-web-search>
+- OpenAI Agents SDK and tracing: <https://developers.openai.com/api/docs/libraries#install-the-agents-sdk>
 - OpenAI simple-evals: <https://github.com/openai/simple-evals>
 - Anthropic tool use: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview>
 - Gemini function calling: <https://ai.google.dev/gemini-api/docs/function-calling>
 - BFCL v4 web search: <https://gorilla.cs.berkeley.edu/blogs/15_bfcl_v4_web_search.html>
 - Model Context Protocol: <https://modelcontextprotocol.io/specification/2025-11-25>
+- Agent2Agent protocol: <https://a2a-protocol.org/latest/specification/>
+- OpenTelemetry GenAI semantic conventions: <https://opentelemetry.io/docs/specs/semconv/gen-ai/>
 - SerpApi Search API: <https://serpapi.com/search-api>
 - FastAPI README style reference: <https://github.com/fastapi/fastapi>
 - uv README style reference: <https://github.com/astral-sh/uv>
