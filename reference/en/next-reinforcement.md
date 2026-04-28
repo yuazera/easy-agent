@@ -5,11 +5,30 @@ This roadmap starts from the published `0.3.5` baseline.
 ## Immediate Focus
 
 - Keep reducing runtime complexity by turning large compatibility modules into smaller import-compatible surfaces, with storage contracts and trace helpers split away from SQLite details.
+- Make zero-credential onboarding a permanent compatibility gate: keep `mock` quickstart, starter templates, and run explanation tests as the first smoke layer before live-provider suites.
 - Promote the new run summary and trace-tree export into the main debugging workflow, then align the JSON trace shape with OpenTelemetry GenAI semantic conventions when the local shape stabilizes.
 - Widen the shipped live provider-specific compatibility evidence beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini coverage when credentials are present.
 - Extend the raw official BFCL v4 normalization path into wider agentic and multihop coverage with clearer official-category diagnostics.
 - Turn the newly shipped `official_source_search` plus `browsecomp_subset` / `simpleqa_subset` support into refreshable scored slices once local dataset exports and grader credentials are available.
 - Deepen MCP notification parity around resource updates, prompt-detail refresh, and template diff telemetry without widening the model-facing runtime surface.
+
+## Onboarding and Diagnostics
+
+Current public agent-building guidance puts the shortest path first: create one working agent, then add model/provider choices, tools, handoffs, guardrails, tracing, and evaluation as the workflow matures. `easy-agent` should keep matching that sequence in its own developer experience.
+
+Next reinforcement for usability:
+
+- keep `quickstart --provider mock` as the first command in docs and CI smoke, because it proves config loading, skills, storage, tool calls, and trace persistence without requiring secrets
+- add more template variants only when they map to shipped runtime contracts, for example approval flow, harness flow, MCP resource catalog flow, and federation loopback flow
+- make `runs explain` the default next step after failed runs, and extend classifiers for provider schema errors, HTTP status buckets, approval states, MCP startup failures, and duplicated tool loops
+- keep traces as the debugging source of truth first, then promote stable trace fields into public evaluation and OpenTelemetry export contracts
+- make every new high-level feature ship with a mock-backed smoke path plus an optional live-provider path, so first-run experience stays reliable even when credentials are missing
+
+Reference:
+
+- <https://developers.openai.com/api/docs/guides/agents#choose-your-starting-point>
+- <https://developers.openai.com/api/docs/guides/agents/quickstart>
+- <https://developers.openai.com/api/docs/guides/agents/integrations-observability>
 
 ## Web Search Reinforcement
 

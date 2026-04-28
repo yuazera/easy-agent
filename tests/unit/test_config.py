@@ -67,6 +67,27 @@ def test_load_config_reads_function_calling_defaults() -> None:
     assert config.model.function_calling.allowed_tool_names == ['weather_lookup']
 
 
+def test_load_config_accepts_mock_protocol() -> None:
+    config = AppConfig.model_validate(
+        {
+            'model': {
+                'provider': 'mock',
+                'protocol': 'mock',
+                'model': 'mock-agent',
+                'base_url': 'mock://local',
+                'api_key_env': 'EASY_AGENT_MOCK_API_KEY',
+            },
+            'graph': {
+                'entrypoint': 'agent-a',
+                'agents': [{'name': 'agent-a'}],
+                'nodes': [],
+            },
+        }
+    )
+
+    assert config.model.protocol is Protocol.MOCK
+
+
 def test_load_config_rejects_force_mode_without_tool_name() -> None:
     with pytest.raises(ValueError, match='forced_tool_name'):
         AppConfig.model_validate(

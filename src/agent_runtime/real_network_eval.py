@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from pathlib import Path
 from statistics import mean
@@ -216,6 +217,27 @@ def _record(scenario: str, transport: str, host_dependency: str, runner: Any, *,
         telemetry=telemetry,
         proof=proof,
     )
+
+
+def _run_async_scenario[T](factory: Callable[[], Awaitable[T]], *, attempts: int = 1) -> T:
+    last_error: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop)
+                return loop.run_until_complete(factory())
+            finally:
+                asyncio.set_event_loop(None)
+                loop.close()
+        except OSError as exc:
+            last_error = exc
+            if getattr(exc, 'winerror', None) != 10055 or attempt + 1 >= attempts:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError('async scenario did not run')
 
 
 def _scenario_proof(scenario: str) -> dict[str, Any]:
@@ -642,7 +664,7 @@ def _scenario_federation_retry_and_reconnect(tmp_path: Path) -> str:
             await manager.aclose()
 
     try:
-        return asyncio.run(_run_async())
+        return _run_async_scenario(_run_async, attempts=3)
     finally:
         callback.stop()
         server.stop()

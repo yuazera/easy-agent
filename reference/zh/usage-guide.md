@@ -27,12 +27,17 @@ uv sync --dev
 
 ```bash
 uv run easy-agent --help
+uv run easy-agent init --provider mock
+uv run easy-agent quickstart --provider mock
+uv run easy-agent template list
+uv run easy-agent template create basic-agent <target-dir>
 uv run easy-agent doctor -c easy-agent.yml
 uv run easy-agent teams list -c configs/teams.example.yml
 uv run easy-agent harness list -c configs/harness.example.yml
 uv run easy-agent federation list -c easy-agent.yml
 uv run easy-agent runs list -c easy-agent.yml
 uv run easy-agent runs show <run_id> -c easy-agent.yml
+uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
@@ -43,12 +48,26 @@ uv run easy-agent mcp prompts list <server> -c easy-agent.yml
 uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"notes"}' -c easy-agent.yml
 ```
 
+## 上手流程
+
+如果只是想先验证 runtime、tools、storage 和 trace surface，不需要任何模型凭据，可以使用 `mock` provider。
+
+- `init --provider mock` 会写出使用 `protocol: mock` 的 starter config。
+- `quickstart --provider mock` 会创建一个临时本地配置，运行一次确定性的工具调用 agent，并输出新 run id 对应的 `runs show`、`runs explain` 与 `traces export` 后续命令。
+- `template list` 展示可用 starter 项目形态。
+- `template create basic-agent <target-dir>` 创建最小单 agent 项目。
+- `template create human-approval-agent <target-dir>` 创建同样的本地 starter，并把 `python_echo` 标为敏感工具。
+- `template create longrun-harness <target-dir>` 创建最小 initializer / worker / evaluator harness。
+
+只有在环境变量里已经有 `DEEPSEEK_API_KEY` 时，才使用 `--provider deepseek`。
+
 ## Run 与 Trace 检查
 
 耐用 run 检查现在分成两层：
 
 - `runs list` 展示最近 run id、status、kind、session id 与创建时间。
 - `runs show <run_id>` 返回 run summary，包括 event、node、checkpoint、approval 与 child-run 数量。
+- `runs explain <run_id>` 会归类常见失败原因，包括 provider 凭据缺失、schema validation failure、guardrail block、MCP failure、iteration loop，以及 Windows cleanup warning。
 - `traces export <run_id>` 默认返回结构化 trace tree。
 - `traces export <run_id> --raw` 返回历史 raw trace payload。
 

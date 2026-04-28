@@ -523,7 +523,31 @@ class GeminiAdapter:
         )
 
 
-ADAPTERS: list[ProtocolAdapter] = [OpenAIAdapter(), AnthropicAdapter(), GeminiAdapter()]
+class MockAdapter:
+    protocol = Protocol.MOCK
+
+    def matches(self, config: ModelConfig) -> bool:
+        return config.provider.lower() == 'mock'
+
+    def endpoint(self, config: ModelConfig) -> str:
+        return 'mock://local'
+
+    def headers(self, config: ModelConfig, api_key: str) -> dict[str, str]:
+        return {}
+
+    def build_payload(
+        self,
+        config: ModelConfig,
+        messages: list[ChatMessage],
+        tools: list[ToolSpec],
+    ) -> dict[str, Any]:
+        return {'messages': [message.model_dump() for message in messages], 'tools': [tool.model_dump() for tool in tools]}
+
+    def parse_response(self, payload: dict[str, Any]) -> AssistantResponse:
+        return AssistantResponse(text=str(payload.get('text') or ''), protocol=self.protocol, raw=payload)
+
+
+ADAPTERS: list[ProtocolAdapter] = [MockAdapter(), OpenAIAdapter(), AnthropicAdapter(), GeminiAdapter()]
 
 
 def resolve_protocol(config: ModelConfig) -> ProtocolAdapter:
@@ -533,7 +557,7 @@ def resolve_protocol(config: ModelConfig) -> ProtocolAdapter:
                 return adapter
         raise ValueError(f'Unsupported protocol: {config.protocol}')
 
-    for protocol in (Protocol.OPENAI, Protocol.ANTHROPIC, Protocol.GEMINI):
+    for protocol in (Protocol.MOCK, Protocol.OPENAI, Protocol.ANTHROPIC, Protocol.GEMINI):
         for adapter in ADAPTERS:
             if adapter.protocol is protocol and adapter.matches(config):
                 return adapter
@@ -571,6 +595,79 @@ class HttpModelClient:
             # Windows asyncio transport teardown can raise after a successful request.
             if 'Event loop is closed' not in str(exc):
                 raise
+
+
+class MockModelClient:
+    def __init__(self, config: ModelConfig) -> None:
+        self.config = config
+        self.adapter = MockAdapter()
+
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        tools: list[ToolSpec],
+    ) -> AssistantResponse:
+        latest_user = next((message.content for message in reversed(messages) if message.role == 'user' and message.content), '')
+        latest_tool = next((message for message in reversed(messages) if message.role == 'tool'), None)
+        if latest_tool is not None:
+            return AssistantResponse(
+                text=f'Mock final answer based on tool result: {latest_tool.content}',
+                protocol=Protocol.MOCK,
+                raw={'provider': 'mock', 'mode': 'tool_result'},
+            )
+        if tools:
+            tool = next((item for item in tools if item.name == 'python_echo'), tools[0])
+            return AssistantResponse(
+                text='',
+                tool_calls=[
+                    ToolCall(
+                        id='mock_call_1',
+                        name=tool.name,
+                        arguments=_mock_tool_arguments(tool.input_schema, latest_user),
+                    )
+                ],
+                protocol=Protocol.MOCK,
+                raw={'provider': 'mock', 'mode': 'tool_call'},
+            )
+        return AssistantResponse(
+            text=f'Mock final answer: {latest_user or "ready"}',
+            protocol=Protocol.MOCK,
+            raw={'provider': 'mock', 'mode': 'text'},
+        )
+
+    async def aclose(self) -> None:
+        return None
+
+
+def _mock_tool_arguments(schema: dict[str, Any], prompt: str) -> dict[str, Any]:
+    properties = schema.get('properties', {})
+    required = schema.get('required', [])
+    if not isinstance(properties, dict):
+        properties = {}
+    if not isinstance(required, list):
+        required = []
+    arguments: dict[str, Any] = {}
+    for name in required:
+        property_schema = properties.get(str(name), {})
+        property_type = property_schema.get('type') if isinstance(property_schema, dict) else None
+        arguments[str(name)] = _mock_value_for_type(property_type, prompt)
+    if not arguments and 'prompt' in properties:
+        arguments['prompt'] = prompt or 'mock quickstart'
+    return arguments
+
+
+def _mock_value_for_type(property_type: Any, prompt: str) -> Any:
+    if isinstance(property_type, list):
+        property_type = next((item for item in property_type if item != 'null'), 'string')
+    if property_type in {'integer', 'number'}:
+        return 1
+    if property_type == 'boolean':
+        return True
+    if property_type == 'array':
+        return []
+    if property_type == 'object':
+        return {}
+    return prompt or 'mock quickstart'
 
 
 

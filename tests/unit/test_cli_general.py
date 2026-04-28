@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,6 +8,7 @@ from typer.testing import CliRunner
 
 from agent_cli.app import app
 from agent_cli.commands.general import _doctor_rows, _entrypoint_type, _mcp_transport_summary
+from agent_common.models import RunStatus
 from agent_common.version import runtime_version
 from agent_config.app import AppConfig, ModelConfig
 from agent_integrations.sandbox import SandboxMode
@@ -157,8 +159,11 @@ storage:
         encoding='utf-8',
     )
     runtime = build_runtime(config_path)
-    runtime.store.create_run('run_cli', 'baseline', {'input': 'hello'})
-    runtime.store.record_event('run_cli', 'run_started', {'input': 'hello'}, span_id='run:run_cli')
+    try:
+        runtime.store.create_run('run_cli', 'baseline', {'input': 'hello'})
+        runtime.store.record_event('run_cli', 'run_started', {'input': 'hello'}, span_id='run:run_cli')
+    finally:
+        asyncio.run(runtime.aclose())
 
     runner = CliRunner()
     list_result = runner.invoke(app, ['runs', 'list', '-c', str(config_path)])
@@ -171,4 +176,68 @@ storage:
     assert '"run_id": "run_cli"' in show_result.output
     assert trace_result.exit_code == 0
     assert '"tree"' in trace_result.output
+
+
+def test_runs_explain_reports_success(tmp_path: Path) -> None:
+    config_path = tmp_path / 'easy-agent.yml'
+    storage_path = str(tmp_path / 'state').replace('\\', '/')
+    config_path.write_text(
+        f"""
+graph:
+  entrypoint: agent_a
+  agents:
+    - name: agent_a
+storage:
+  path: {storage_path}
+  database: state.db
+""",
+        encoding='utf-8',
+    )
+    runtime = build_runtime(config_path)
+    try:
+        runtime.store.create_run('run_success', 'baseline', {'input': 'hello'})
+        runtime.store.finish_run('run_success', RunStatus.SUCCEEDED.value, {'output': 'done'})
+        result = CliRunner().invoke(app, ['runs', 'explain', 'run_success', '-c', str(config_path), '--format', 'json'])
+    finally:
+        asyncio.run(runtime.aclose())
+
+    assert result.exit_code == 0
+    assert '"likely_layer": "success"' in result.output
+    assert '"headline": "Run completed successfully."' in result.output
+
+
+def test_runs_explain_reports_missing_api_key(tmp_path: Path) -> None:
+    config_path = tmp_path / 'easy-agent.yml'
+    storage_path = str(tmp_path / 'state').replace('\\', '/')
+    config_path.write_text(
+        f"""
+graph:
+  entrypoint: agent_a
+  agents:
+    - name: agent_a
+storage:
+  path: {storage_path}
+  database: state.db
+""",
+        encoding='utf-8',
+    )
+    runtime = build_runtime(config_path)
+    try:
+        runtime.store.create_run('run_failure', 'baseline', {'input': 'hello'})
+        runtime.store.record_event(
+            'run_failure',
+            'run_failed',
+            {'error': 'Missing API key environment variable: DEEPSEEK_API_KEY'},
+        )
+        runtime.store.finish_run(
+            'run_failure',
+            RunStatus.FAILED.value,
+            {'error': 'Missing API key environment variable: DEEPSEEK_API_KEY'},
+        )
+        result = CliRunner().invoke(app, ['runs', 'explain', 'run_failure', '-c', str(config_path), '--format', 'json'])
+    finally:
+        asyncio.run(runtime.aclose())
+
+    assert result.exit_code == 0
+    assert '"likely_layer": "model_provider"' in result.output
 

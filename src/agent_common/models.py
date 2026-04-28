@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 class Protocol(StrEnum):
     AUTO = 'auto'
+    MOCK = 'mock'
     OPENAI = 'openai'
     ANTHROPIC = 'anthropic'
     GEMINI = 'gemini'

@@ -27,12 +27,17 @@ uv sync --dev
 
 ```bash
 uv run easy-agent --help
+uv run easy-agent init --provider mock
+uv run easy-agent quickstart --provider mock
+uv run easy-agent template list
+uv run easy-agent template create basic-agent <target-dir>
 uv run easy-agent doctor -c easy-agent.yml
 uv run easy-agent teams list -c configs/teams.example.yml
 uv run easy-agent harness list -c configs/harness.example.yml
 uv run easy-agent federation list -c easy-agent.yml
 uv run easy-agent runs list -c easy-agent.yml
 uv run easy-agent runs show <run_id> -c easy-agent.yml
+uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
@@ -43,12 +48,26 @@ uv run easy-agent mcp prompts list <server> -c easy-agent.yml
 uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"notes"}' -c easy-agent.yml
 ```
 
+## Onboarding Flow
+
+Use the `mock` provider when you want to verify the runtime, tools, storage, and trace surfaces without any model credentials.
+
+- `init --provider mock` writes a starter config that uses `protocol: mock`.
+- `quickstart --provider mock` creates a temporary local config, runs one deterministic tool-using agent turn, and prints the follow-up `runs show`, `runs explain`, and `traces export` commands for the new run id.
+- `template list` shows starter project shapes.
+- `template create basic-agent <target-dir>` creates a minimal single-agent project.
+- `template create human-approval-agent <target-dir>` creates the same local starter with `python_echo` marked as a sensitive tool.
+- `template create longrun-harness <target-dir>` creates a minimal initializer / worker / evaluator harness.
+
+Use `--provider deepseek` only after `DEEPSEEK_API_KEY` is present in the environment.
+
 ## Run and Trace Inspection
 
 Durable run inspection now has two layers:
 
 - `runs list` shows recent run ids, status, kind, session id, and creation time.
 - `runs show <run_id>` returns a run summary with event, node, checkpoint, approval, and child-run counts.
+- `runs explain <run_id>` classifies common failure causes such as missing provider credentials, schema validation failures, guardrail blocks, MCP failures, iteration loops, and known Windows cleanup warnings.
 - `traces export <run_id>` returns a structured trace tree by default.
 - `traces export <run_id> --raw` returns the historical raw trace payload.
 

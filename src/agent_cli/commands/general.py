@@ -16,6 +16,7 @@ from agent_common.models import HumanLoopMode, RunContext
 from agent_common.version import runtime_version
 from agent_protocols import resolve_protocol
 from agent_runtime import EasyAgentRuntime, build_runtime
+from agent_runtime.diagnostics import explain_run
 
 console = Console()
 runs_app = typer.Typer(help='Inspect durable run records.')
@@ -150,6 +151,33 @@ def show_run(
     runtime = build_runtime(config)
     try:
         console.print_json(json.dumps(runtime.store.load_run_summary(run_id), ensure_ascii=False))
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@runs_app.command('explain')
+def explain_run_command(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = explain_run(runtime.store, run_id)
+        if output_format == 'json':
+            console.print_json(json.dumps(payload, ensure_ascii=False))
+            return
+        table = Table(title=f'run explanation: {run_id}')
+        table.add_column('Field', style='cyan')
+        table.add_column('Value', style='green')
+        table.add_row('Status', str(payload['status']))
+        table.add_row('Likely Layer', str(payload['likely_layer']))
+        table.add_row('Headline', str(payload['headline']))
+        table.add_row('Counts', json.dumps(payload['counts'], ensure_ascii=False))
+        table.add_row('Recommended Actions', '\n'.join(str(item) for item in payload['recommended_actions']))
+        console.print(table)
+        if payload['evidence']:
+            console.print_json(json.dumps({'evidence': payload['evidence']}, ensure_ascii=False))
     finally:
         asyncio.run(runtime.aclose())
 

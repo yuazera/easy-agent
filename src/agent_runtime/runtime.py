@@ -24,7 +24,7 @@ from agent_integrations.sandbox import SandboxManager, SandboxMode
 from agent_integrations.skills import SkillLoader, SkillMetadata
 from agent_integrations.storage import SQLiteRunStore
 from agent_integrations.workbench import WorkbenchManager
-from agent_protocols.client import HttpModelClient
+from agent_protocols.client import HttpModelClient, MockModelClient
 from agent_runtime.harness import HarnessRuntime
 
 
@@ -652,7 +652,7 @@ def build_runtime_from_config(config: AppConfig) -> EasyAgentRuntime:
         final_output_hooks=config.guardrails.final_output_hooks,
     )
     human_loop = HumanLoopManager(store, config.security.human_loop)
-    model_client = HttpModelClient(config.model)
+    model_client = MockModelClient(config.model) if config.model.provider.lower() == 'mock' else HttpModelClient(config.model)
     federation_manager = FederationClientManager(config.federation, store=store)
     mcp_manager = McpClientManager(
         config.mcp,

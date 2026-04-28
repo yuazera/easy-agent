@@ -5,11 +5,30 @@
 ## 当前重点
 
 - 继续降低 runtime 复杂度，把大型兼容模块拆成更小但 import-compatible 的 surface，并把 storage contracts 与 trace helpers 从 SQLite 细节里分离出来。
+- 把零凭据上手固定为长期兼容门禁：`mock` quickstart、starter templates 与 run explanation 测试要先于 live-provider 套件执行。
 - 把新的 run summary 与 trace-tree export 推进成主要排障入口；等本地 JSON trace 形态稳定后，再对齐 OpenTelemetry GenAI semantic conventions。
 - 把已经交付的 live provider-specific 兼容证据继续扩展到必跑的 DeepSeek/OpenAI-compatible 基线之外，在有凭据时补齐 Anthropic 与 Gemini 覆盖。
 - 把 raw official BFCL v4 归一化路径继续推进到更广的 agentic 与 multihop 覆盖，并补齐更清晰的官方分类诊断。
 - 在拿到本地数据导出与 grader 凭据后，把新交付的 `official_source_search` 与 `browsecomp_subset` / `simpleqa_subset` 支持推进成可刷新分数的评测切片。
 - 在不随意扩大 model-facing runtime surface 的前提下，继续深化 MCP 通知对齐，包括 resource updates、prompt-detail refresh 与 template diff telemetry。
+
+## 上手与诊断补强
+
+当前公开的 agent 构建指引强调先走最短路径：先让一个 agent 跑起来，再逐步加入模型/供应商选择、工具、handoff、guardrails、tracing 与 evaluation。`easy-agent` 自己的开发体验也应该保持这个顺序。
+
+下一步可落地的易用性补强：
+
+- 把 `quickstart --provider mock` 保持为文档和 CI smoke 的第一条命令，因为它可以在无 secret 的情况下验证 config loading、skills、storage、tool calls 与 trace persistence
+- 只有当模板能映射到已交付 runtime contract 时才增加模板，例如 approval flow、harness flow、MCP resource catalog flow 与 federation loopback flow
+- 把 `runs explain` 做成失败 run 后默认的下一步，并继续扩展 provider schema error、HTTP status bucket、approval state、MCP startup failure 与 duplicated tool loop 分类
+- 让 trace 先作为排障事实来源，等字段稳定后再提升为 public evaluation 与 OpenTelemetry export contract
+- 每个新的高层能力都配套 mock-backed smoke path 和可选 live-provider path，让首次运行不再依赖本地凭据是否齐全
+
+参考：
+
+- <https://developers.openai.com/api/docs/guides/agents#choose-your-starting-point>
+- <https://developers.openai.com/api/docs/guides/agents/quickstart>
+- <https://developers.openai.com/api/docs/guides/agents/integrations-observability>
 
 ## Web Search 补强
 
