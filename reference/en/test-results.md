@@ -83,30 +83,30 @@ Compatibility notes:
 
 ## Real-Network Snapshot
 
-Latest generated snapshot timestamp: `2026-04-29T03:26:51Z`
+Latest generated snapshot timestamp: `2026-04-29T08:32:11Z`
 
 | Test Set | Score | Duration (s) | Notes |
 | --- | ---: | ---: | --- |
-| real_network.cross_process_federation | 100.0 | 1.3225 | well-known discovery and send/poll federation |
-| real_network.live_model_federation_roundtrip | 100.0 | 9.8811 | loopback federation through the local A2A surface |
-| real_network.disconnect_retry_chaos | 100.0 | 5.6471 | callback retry, push notifications, and signed webhook delivery |
-| real_network.duplicate_delivery_replay_resilience | 100.0 | 4.6576 | replay-safe callback and durable task events |
-| real_network.workbench_reuse_process | 100.0 | 1.9972 | process workbench reuse |
-| real_network.workbench_reuse_container | 100.0 | 31.6165 | container warm-start and snapshot restore |
-| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 50.0752 | incremental container snapshot reuse |
-| real_network.workbench_reuse_microvm | 100.0 | 17.6801 | SSH-backed microVM reuse |
-| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 24.3929 | incremental microVM snapshot reuse |
-| real_network.replay_resume_failure_injection | 100.0 | 7.2119 | replay/resume failure injection |
+| real_network.cross_process_federation | 100.0 | 1.1644 | well-known discovery and send/poll federation |
+| real_network.live_model_federation_roundtrip | 100.0 | 8.5967 | loopback federation through the local A2A surface |
+| real_network.disconnect_retry_chaos | 100.0 | 5.1623 | callback retry, push notifications, and signed webhook delivery |
+| real_network.duplicate_delivery_replay_resilience | 100.0 | 5.1668 | replay-safe callback and durable task events |
+| real_network.workbench_reuse_process | 100.0 | 2.1623 | process workbench reuse |
+| real_network.workbench_reuse_container | 100.0 | 29.8542 | container warm-start and snapshot restore |
+| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 46.8568 | incremental container snapshot reuse |
+| real_network.workbench_reuse_microvm | 100.0 | 16.7065 | SSH-backed microVM reuse |
+| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 24.5266 | incremental microVM snapshot reuse |
+| real_network.replay_resume_failure_injection | 100.0 | 5.6834 | replay/resume failure injection |
 
 Warm-start telemetry summary:
 
 | Metric | Value |
 | --- | ---: |
 | telemetry.cache_hit_rate | 100.0 |
-| telemetry.container_warm_start_average_seconds | 5.1875 |
-| telemetry.microvm_warm_start_average_seconds | 7.0377 |
-| telemetry.snapshot_drift_ratio_average | 0.4702 |
-| telemetry.snapshot_drift_ratio_max | 0.8982 |
+| telemetry.container_warm_start_average_seconds | 4.6869 |
+| telemetry.microvm_warm_start_average_seconds | 6.8618 |
+| telemetry.snapshot_drift_ratio_average | 0.4081 |
+| telemetry.snapshot_drift_ratio_max | 0.7116 |
 
 Scenario proof fields are now emitted with each real-network record so score rows can be traced back to an executable scenario contract:
 
@@ -137,12 +137,12 @@ The README keeps the comparison high level. This page keeps the public evidence 
 This round uses Python-based verification only.
 
 - Static checks: `ruff` and `mypy`
-- Targeted regressions around setup preflight, config explanation, config doctor, searchable HTML trace export, mock provider, onboarding CLI, run explanation, provider compatibility, config validation, guardrails, BFCL evaluation, official-source search, and simple-evals profile support: `15 passed`, `36 passed`, `89 passed`, and `4 passed`
-- Full unit coverage: `214 passed`
+- Targeted regressions around setup preflight, config explanation, config doctor, searchable HTML trace export, local trace opening, latest-report summarization, mock provider, onboarding CLI, scenario creation, run explanation, provider compatibility, config validation, guardrails, BFCL evaluation, official-source search, and simple-evals profile support: `17 passed`, `36 passed`, `89 passed`, and `4 passed`
+- Full unit coverage: `216 passed`
 - Targeted live provider-compatibility regression: `1 passed`
 - Full real integration coverage: `7 passed`, `2 warnings`
 - The retained benchmark and headline public-eval scores still point at the April 14 release snapshot, the live provider-compatibility evidence remains the April 20 snapshot, and the real-network artifact was refreshed on April 29
 - The remaining warnings are known Windows asyncio subprocess cleanup warnings after successful completion
-- New focused regressions cover setup preflight, config explanation, config doctor, searchable HTML trace export, offline mock runs, starter templates, quickstart, run explanation, run listing, run summary, structured trace tree export, executor capability reports, storage contracts, and real-network scenario proof metadata.
+- New focused regressions cover setup preflight, config explanation, config doctor, searchable HTML trace export, `traces open`, `report latest`, offline mock runs, starter templates, `new <scenario>`, quickstart, run explanation, run listing, run summary, structured trace tree export, executor capability reports, storage contracts, and real-network scenario proof metadata.
 
 Exact machine-local execution logs stay outside the repository-facing documentation surface.

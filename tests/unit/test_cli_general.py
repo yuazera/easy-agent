@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -171,6 +172,8 @@ storage:
     trace_result = runner.invoke(app, ['traces', 'export', 'run_cli', '-c', str(config_path)])
     html_path = tmp_path / 'trace.html'
     html_result = runner.invoke(app, ['traces', 'export', 'run_cli', '-c', str(config_path), '--html', '--output', str(html_path)])
+    open_path = tmp_path / 'trace-open.html'
+    open_result = runner.invoke(app, ['traces', 'open', 'run_cli', '-c', str(config_path), '--output', str(open_path), '--no-browser'])
     invalid_html_result = runner.invoke(app, ['traces', 'export', 'run_cli', '-c', str(config_path), '--raw', '--html', '--output', str(html_path)])
 
     assert list_result.exit_code == 0
@@ -187,7 +190,79 @@ storage:
     assert 'trace-search' in html
     assert 'data-filter="error"' in html
     assert 'summary-card' in html
+    assert open_result.exit_code == 0
+    assert open_path.exists()
+    assert '"opened": false' in open_result.output
     assert invalid_html_result.exit_code != 0
+
+
+def test_report_latest_summarizes_artifacts_and_runs(tmp_path: Path) -> None:
+    config_path = tmp_path / 'easy-agent.yml'
+    storage_path = str(tmp_path / 'state').replace('\\', '/')
+    config_path.write_text(
+        f"""
+graph:
+  entrypoint: agent_a
+  agents:
+    - name: agent_a
+storage:
+  path: {storage_path}
+  database: state.db
+""",
+        encoding='utf-8',
+    )
+    runtime = build_runtime(config_path)
+    try:
+        runtime.store.create_run('run_report', 'baseline', {'input': 'hello'})
+        runtime.store.finish_run('run_report', RunStatus.SUCCEEDED.value, {'output': 'done'})
+    finally:
+        asyncio.run(runtime.aclose())
+
+    benchmark = tmp_path / 'benchmark.json'
+    benchmark.write_text(
+        json.dumps({'summary': {'single_agent': {'runs': 2, 'successes': 2, 'failures': 0}}}),
+        encoding='utf-8',
+    )
+    public_eval = tmp_path / 'public-eval.json'
+    public_eval.write_text(
+        json.dumps(
+            {
+                'profile': 'full_v4',
+                'case_counts': {'completed_records': 3},
+                'summary': {'overall': {'bfcl_subcategory_accuracy': 1.0}},
+            }
+        ),
+        encoding='utf-8',
+    )
+    real_network = tmp_path / 'real-network.json'
+    real_network.write_text(
+        json.dumps({'summary': {'runs': 4, 'passed': 3, 'failed': 0, 'skipped': 1}, 'generated_at': '2026-04-29T00:00:00Z'}),
+        encoding='utf-8',
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            'report',
+            'latest',
+            '-c',
+            str(config_path),
+            '--format',
+            'json',
+            '--benchmark-report',
+            str(benchmark),
+            '--public-eval-report',
+            str(public_eval),
+            '--real-network-report',
+            str(real_network),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"benchmark"' in result.output
+    assert '"score": 100.0' in result.output
+    assert '"score": 75.0' in result.output
+    assert '"latest_run_id": "run_report"' in result.output
 
 
 def test_runs_explain_reports_success(tmp_path: Path) -> None:

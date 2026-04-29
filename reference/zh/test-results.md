@@ -83,30 +83,30 @@
 
 ## Real-Network 快照
 
-最新快照时间：`2026-04-29T03:26:51Z`
+最新快照时间：`2026-04-29T08:32:11Z`
 
 | 测试集 | 分数 | 耗时（秒） | 说明 |
 | --- | ---: | ---: | --- |
-| real_network.cross_process_federation | 100.0 | 1.3225 | well-known discovery 与 send/poll federation |
-| real_network.live_model_federation_roundtrip | 100.0 | 9.8811 | 通过本地 A2A surface 的 loopback federation |
-| real_network.disconnect_retry_chaos | 100.0 | 5.6471 | callback retry、push notifications 与 signed webhook delivery |
-| real_network.duplicate_delivery_replay_resilience | 100.0 | 4.6576 | replay-safe callback 与 durable task events |
-| real_network.workbench_reuse_process | 100.0 | 1.9972 | process workbench reuse |
-| real_network.workbench_reuse_container | 100.0 | 31.6165 | container warm-start 与 snapshot restore |
-| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 50.0752 | incremental container snapshot reuse |
-| real_network.workbench_reuse_microvm | 100.0 | 17.6801 | SSH-backed microVM reuse |
-| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 24.3929 | incremental microVM snapshot reuse |
-| real_network.replay_resume_failure_injection | 100.0 | 7.2119 | replay/resume failure injection |
+| real_network.cross_process_federation | 100.0 | 1.1644 | well-known discovery 与 send/poll federation |
+| real_network.live_model_federation_roundtrip | 100.0 | 8.5967 | 通过本地 A2A surface 的 loopback federation |
+| real_network.disconnect_retry_chaos | 100.0 | 5.1623 | callback retry、push notifications 与 signed webhook delivery |
+| real_network.duplicate_delivery_replay_resilience | 100.0 | 5.1668 | replay-safe callback 与 durable task events |
+| real_network.workbench_reuse_process | 100.0 | 2.1623 | process workbench reuse |
+| real_network.workbench_reuse_container | 100.0 | 29.8542 | container warm-start 与 snapshot restore |
+| real_network.workbench_incremental_snapshot_reuse_container | 100.0 | 46.8568 | incremental container snapshot reuse |
+| real_network.workbench_reuse_microvm | 100.0 | 16.7065 | SSH-backed microVM reuse |
+| real_network.workbench_incremental_snapshot_reuse_microvm | 100.0 | 24.5266 | incremental microVM snapshot reuse |
+| real_network.replay_resume_failure_injection | 100.0 | 5.6834 | replay/resume failure injection |
 
 Warm-start telemetry summary：
 
 | 指标 | 数值 |
 | --- | ---: |
 | telemetry.cache_hit_rate | 100.0 |
-| telemetry.container_warm_start_average_seconds | 5.1875 |
-| telemetry.microvm_warm_start_average_seconds | 7.0377 |
-| telemetry.snapshot_drift_ratio_average | 0.4702 |
-| telemetry.snapshot_drift_ratio_max | 0.8982 |
+| telemetry.container_warm_start_average_seconds | 4.6869 |
+| telemetry.microvm_warm_start_average_seconds | 6.8618 |
+| telemetry.snapshot_drift_ratio_average | 0.4081 |
+| telemetry.snapshot_drift_ratio_max | 0.7116 |
 
 每条 real-network record 现在都会带场景证明字段，让分数行可以追溯到可执行的场景契约：
 
@@ -137,12 +137,12 @@ README 只保留高层摘要，本页保留公开证据映射。
 本轮只使用 Python-based verification。
 
 - 静态检查：`ruff` 与 `mypy`
-- 定向回归：setup preflight、config explanation、config doctor、可搜索 HTML trace export、mock provider、onboarding CLI、run explanation、provider compatibility、config validation、guardrails、BFCL evaluation、official-source search 与 simple-evals profile support，结果 `15 passed`、`36 passed`、`89 passed` 加 `4 passed`
-- 全量 unit tests：`214 passed`
+- 定向回归：setup preflight、config explanation、config doctor、可搜索 HTML trace export、本地 trace 打开、latest-report 汇总、mock provider、onboarding CLI、scenario creation、run explanation、provider compatibility、config validation、guardrails、BFCL evaluation、official-source search 与 simple-evals profile support，结果 `17 passed`、`36 passed`、`89 passed` 加 `4 passed`
+- 全量 unit tests：`216 passed`
 - 定向 live provider compatibility 回归：`1 passed`
 - 全量 real integration：`7 passed`、`2 warnings`
 - 保留的 benchmark 与 public-eval headline 分数仍指向 4 月 14 日发布快照，live provider compatibility 证据保留 4 月 20 日快照，而 real-network artifact 在 4 月 29 日重新刷新
 - 剩余 warning 仍然是 Windows asyncio subprocess cleanup 的已知问题，不属于功能失败
-- 新增 focused regressions 覆盖 setup preflight、config explanation、config doctor、可搜索 HTML trace export、offline mock runs、starter templates、quickstart、run explanation、run listing、run summary、structured trace tree export、executor capability reports、storage contracts 与 real-network scenario proof metadata。
+- 新增 focused regressions 覆盖 setup preflight、config explanation、config doctor、可搜索 HTML trace export、`traces open`、`report latest`、offline mock runs、starter templates、`new <scenario>`、quickstart、run explanation、run listing、run summary、structured trace tree export、executor capability reports、storage contracts 与 real-network scenario proof metadata。
 
 机器本地的完整执行日志不进入仓库公开文档。

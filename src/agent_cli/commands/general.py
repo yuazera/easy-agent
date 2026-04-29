@@ -4,9 +4,10 @@ import asyncio
 import json
 import platform
 import sys
+import webbrowser
 from html import escape
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import typer
 from rich.console import Console
@@ -22,6 +23,7 @@ from agent_runtime.diagnostics import explain_run
 console = Console()
 runs_app = typer.Typer(help='Inspect durable run records.')
 traces_app = typer.Typer(help='Export structured run traces.')
+report_app = typer.Typer(help='Summarize local verification and run reports.')
 
 
 
@@ -205,6 +207,169 @@ def export_trace(
             console.print_json(json.dumps({'run_id': run_id, 'output': str(output_path)}, ensure_ascii=False))
             return
         console.print_json(json.dumps(payload, ensure_ascii=False))
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@traces_app.command('open')
+def open_trace(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output: str | None = typer.Option(None, '-o', '--output', help='HTML output path.'),
+    no_browser: bool = typer.Option(False, '--no-browser', help='Write the HTML file without launching a browser.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = runtime.store.load_trace_tree(run_id)
+        output_path = Path(output) if output else Path(f'trace-{_html_token(run_id)}.html')
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(_trace_tree_html(payload), encoding='utf-8')
+        opened = False
+        if not no_browser:
+            opened = webbrowser.open(output_path.resolve().as_uri())
+        console.print_json(json.dumps({'run_id': run_id, 'output': str(output_path), 'opened': opened}, ensure_ascii=False))
+    finally:
+        asyncio.run(runtime.aclose())
+
+
+@report_app.command('latest')
+def latest_report(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+    benchmark_report: str = typer.Option('.easy-agent/benchmark-report.json', '--benchmark-report'),
+    public_eval_report: str = typer.Option('.easy-agent/public-eval-report.json', '--public-eval-report'),
+    real_network_report: str = typer.Option('.easy-agent/real-network-report.json', '--real-network-report'),
+    run_limit: int = typer.Option(50, '--run-limit', min=1, max=500),
+) -> None:
+    payload = {
+        'reports': {
+            'benchmark': _summarize_benchmark_report(Path(benchmark_report)),
+            'public_eval': _summarize_public_eval_report(Path(public_eval_report)),
+            'real_network': _summarize_real_network_report(Path(real_network_report)),
+        },
+        'runs': _summarize_recent_runs(Path(config), run_limit),
+    }
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title='easy-agent latest report')
+    table.add_column('Surface', style='cyan')
+    table.add_column('Status', style='green')
+    table.add_column('Score', style='yellow')
+    table.add_column('Summary')
+    for name, item in payload['reports'].items():
+        table.add_row(
+            name,
+            str(item['status']),
+            str(item.get('score') if item.get('score') is not None else '-'),
+            str(item.get('summary') or '-'),
+        )
+    runs = payload['runs']
+    table.add_row('runs', str(runs['status']), '-', json.dumps(runs.get('summary', {}), ensure_ascii=False))
+    console.print(table)
+
+
+def _read_json_report(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    return cast(dict[str, Any], json.loads(path.read_text(encoding='utf-8')))
+
+
+def _score(successes: int, runs: int) -> float | None:
+    if runs <= 0:
+        return None
+    return round(successes / runs * 100, 4)
+
+
+def _summarize_benchmark_report(path: Path) -> dict[str, Any]:
+    report = _read_json_report(path)
+    if report is None:
+        return {'status': 'missing', 'path': str(path), 'score': None, 'summary': 'report not found'}
+    raw_summary = report.get('summary')
+    summary = cast(dict[str, Any], raw_summary) if isinstance(raw_summary, dict) else {}
+    runs = sum(int(item.get('runs') or 0) for item in summary.values() if isinstance(item, dict))
+    successes = sum(int(item.get('successes') or 0) for item in summary.values() if isinstance(item, dict))
+    failures = sum(int(item.get('failures') or 0) for item in summary.values() if isinstance(item, dict))
+    return {
+        'status': 'available',
+        'path': str(path),
+        'score': _score(successes, runs),
+        'summary': f'{successes}/{runs} succeeded, {failures} failed',
+        'runs': runs,
+        'successes': successes,
+        'failures': failures,
+    }
+
+
+def _summarize_public_eval_report(path: Path) -> dict[str, Any]:
+    report = _read_json_report(path)
+    if report is None:
+        return {'status': 'missing', 'path': str(path), 'score': None, 'summary': 'report not found'}
+    raw_summary = report.get('summary')
+    summary = cast(dict[str, Any], raw_summary) if isinstance(raw_summary, dict) else {}
+    raw_overall = summary.get('overall')
+    overall = cast(dict[str, Any], raw_overall) if isinstance(raw_overall, dict) else {}
+    score_value = overall.get('bfcl_subcategory_accuracy')
+    if score_value is None:
+        score_value = overall.get('bfcl_case_pass_rate')
+    score = round(float(score_value) * 100, 4) if isinstance(score_value, int | float) else None
+    raw_case_counts = report.get('case_counts')
+    case_counts = cast(dict[str, Any], raw_case_counts) if isinstance(raw_case_counts, dict) else {}
+    completed = case_counts.get('completed_records')
+    return {
+        'status': 'available',
+        'path': str(path),
+        'score': score,
+        'summary': f"profile={report.get('profile', '-')}, completed={completed or '-'}",
+        'profile': report.get('profile'),
+        'completed_records': completed,
+    }
+
+
+def _summarize_real_network_report(path: Path) -> dict[str, Any]:
+    report = _read_json_report(path)
+    if report is None:
+        return {'status': 'missing', 'path': str(path), 'score': None, 'summary': 'report not found'}
+    raw_summary = report.get('summary')
+    summary = cast(dict[str, Any], raw_summary) if isinstance(raw_summary, dict) else {}
+    runs = int(summary.get('runs') or 0)
+    passed = int(summary.get('passed') or 0)
+    failed = int(summary.get('failed') or 0)
+    skipped = int(summary.get('skipped') or 0)
+    return {
+        'status': 'available',
+        'path': str(path),
+        'score': _score(passed, runs),
+        'summary': f'{passed}/{runs} passed, {failed} failed, {skipped} skipped',
+        'generated_at': report.get('generated_at'),
+        'runs': runs,
+        'passed': passed,
+        'failed': failed,
+        'skipped': skipped,
+    }
+
+
+def _summarize_recent_runs(config: Path, limit: int) -> dict[str, Any]:
+    if not config.is_file():
+        return {'status': 'missing_config', 'config': str(config), 'summary': {}}
+    try:
+        runtime = build_runtime(config)
+    except Exception as exc:
+        return {'status': 'unavailable', 'config': str(config), 'error': str(exc), 'summary': {}}
+    try:
+        runs = runtime.store.list_runs(limit=limit)
+        by_status: dict[str, int] = {}
+        for run in runs:
+            status = str(run.get('status') or 'unknown')
+            by_status[status] = by_status.get(status, 0) + 1
+        return {
+            'status': 'available',
+            'config': str(config),
+            'summary': {'total': len(runs), 'by_status': by_status},
+            'latest_run_id': str(runs[0]['run_id']) if runs else None,
+        }
     finally:
         asyncio.run(runtime.aclose())
 

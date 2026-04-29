@@ -28,6 +28,8 @@ uv sync --dev
 ```bash
 uv run easy-agent --help
 uv run easy-agent setup --provider mock
+uv run easy-agent new coding-agent
+uv run easy-agent new research-agent <target-dir>
 uv run easy-agent init --provider mock
 uv run easy-agent quickstart --provider mock
 uv run easy-agent template list
@@ -44,6 +46,8 @@ uv run easy-agent runs show <run_id> -c easy-agent.yml
 uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml --html --output trace.html
+uv run easy-agent traces open <run_id> -c easy-agent.yml --no-browser
+uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -60,6 +64,7 @@ Use the `mock` provider when you want to verify the runtime, tools, storage, and
 - `setup --provider mock` creates or reuses a local config, runs static preflight checks, validates it, runs a deterministic smoke test, and prints the next run-inspection commands.
 - `init --provider mock` writes a starter config that uses `protocol: mock`.
 - `quickstart --provider mock` creates a temporary local config, runs one deterministic tool-using agent turn, and prints the follow-up `runs show`, `runs explain`, and `traces export` commands for the new run id.
+- `new <scenario> [target-dir]` is the shortest project creation path. It wraps `template create`, defaults the target directory to the scenario name, and keeps the older template commands available.
 - `template list` shows starter project shapes.
 - `template create basic-agent <target-dir>` creates a minimal single-agent project.
 - `template create human-approval-agent <target-dir>` creates the same local starter with `python_echo` marked as a sensitive tool.
@@ -68,6 +73,8 @@ Use the `mock` provider when you want to verify the runtime, tools, storage, and
 - `template create eval-smoke <target-dir>` creates a public-eval smoke starter.
 - `template create federation-loopback <target-dir>` creates a local federation export starter.
 - `template create workbench-coding-agent <target-dir>` creates a process-workbench starter.
+- `template create coding-agent <target-dir>` creates a business-oriented coding starter with process workbench configuration.
+- `template create research-agent <target-dir>` creates a business-oriented research starter with `official_source_search` wired beside the mock-first smoke tool.
 - `config explain` summarizes model/provider choices, entrypoint type, agents, tools, teams, harnesses, MCP, storage, executors, federation, eval settings, and required environment variables without printing secret values.
 - `config doctor` performs static risk checks without starting model clients or MCP servers. It reports Python baseline drift, missing live env vars, missing local tools, MCP roots/auth gaps, federation auth gaps, workbench executor readiness, human-loop coverage, storage portability, and eval credential readiness.
 - Generated templates include a local README, a minimal `.env.local.example`, and a mock-first smoke command path. Template smoke starts with `config doctor`, then runs a short task and exports an HTML trace for the new run id.
@@ -84,6 +91,18 @@ Durable run inspection now has two layers:
 - `traces export <run_id>` returns a structured trace tree by default.
 - `traces export <run_id> --raw` returns the historical raw trace payload.
 - `traces export <run_id> --html --output trace.html` writes a standalone HTML trace viewer for the structured tree, including summary cards, status/error highlighting, span-kind filters, text search, and the raw JSON payload.
+- `traces open <run_id>` writes the same standalone HTML viewer and opens it in the default browser. Use `--no-browser` for headless terminals, CI, or tests.
+
+## Latest Report
+
+`report latest` is a read-only status dashboard for local evidence:
+
+- benchmark report availability, success count, and score
+- public-eval profile, completed record count, and headline BFCL score
+- real-network pass/fail/skip count and generated timestamp
+- recent durable run status counts from the configured storage
+
+If a report file is absent, the command marks that surface as `missing` and still returns the rest of the dashboard. Use the report path override flags when comparing temporary or archived artifacts.
 
 Trace-tree spans are derived from the existing runtime event envelope and include stable `span_id`, `parent_span_id`, `kind`, `status`, duration, input/output hashes, retry count, checkpoint id, and child spans. This keeps the current JSON trace path lightweight while leaving a future OpenTelemetry export path open.
 

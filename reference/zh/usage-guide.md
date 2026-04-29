@@ -28,6 +28,8 @@ uv sync --dev
 ```bash
 uv run easy-agent --help
 uv run easy-agent setup --provider mock
+uv run easy-agent new coding-agent
+uv run easy-agent new research-agent <target-dir>
 uv run easy-agent init --provider mock
 uv run easy-agent quickstart --provider mock
 uv run easy-agent template list
@@ -44,6 +46,8 @@ uv run easy-agent runs show <run_id> -c easy-agent.yml
 uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml --html --output trace.html
+uv run easy-agent traces open <run_id> -c easy-agent.yml --no-browser
+uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -60,6 +64,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `setup --provider mock` 会创建或复用本地配置，运行静态 preflight checks，完成配置验证，运行一次确定性 smoke test，并输出后续 run inspection 命令。
 - `init --provider mock` 会写出使用 `protocol: mock` 的 starter config。
 - `quickstart --provider mock` 会创建一个临时本地配置，运行一次确定性的工具调用 agent，并输出新 run id 对应的 `runs show`、`runs explain` 与 `traces export` 后续命令。
+- `new <scenario> [target-dir]` 是最短的项目创建路径。它包装 `template create`，默认把目标目录设为 scenario 名称，同时保留旧的 template 命令。
 - `template list` 展示可用 starter 项目形态。
 - `template create basic-agent <target-dir>` 创建最小单 agent 项目。
 - `template create human-approval-agent <target-dir>` 创建同样的本地 starter，并把 `python_echo` 标为敏感工具。
@@ -68,6 +73,8 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `template create eval-smoke <target-dir>` 创建 public-eval smoke starter。
 - `template create federation-loopback <target-dir>` 创建本地 federation export starter。
 - `template create workbench-coding-agent <target-dir>` 创建 process-workbench starter。
+- `template create coding-agent <target-dir>` 创建面向业务编码任务的 starter，并带 process workbench 配置。
+- `template create research-agent <target-dir>` 创建面向资料调研任务的 starter，把 `official_source_search` 和 mock-first smoke 工具一起挂载。
 - `config explain` 会汇总 model/provider、entrypoint type、agents、tools、teams、harnesses、MCP、storage、executors、federation、eval settings 与 required environment variables，但不会打印 secret 值。
 - `config doctor` 做静态风险检查，不启动 model client，也不启动 MCP server。它会报告 Python baseline drift、缺失的 live env、缺失的本地工具、MCP roots/auth 缺口、federation auth 缺口、workbench executor readiness、human-loop 覆盖、storage 可移植性与 eval 凭据状态。
 - 生成的模板会带本地 README、最小 `.env.local.example` 与 mock-first smoke 命令路径。模板 smoke 从 `config doctor` 开始，再运行一个短任务，并为新 run id 导出 HTML trace。
@@ -84,6 +91,18 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `traces export <run_id>` 默认返回结构化 trace tree。
 - `traces export <run_id> --raw` 返回历史 raw trace payload。
 - `traces export <run_id> --html --output trace.html` 会为 structured tree 写出单文件 HTML trace viewer，包含 summary cards、status/error highlighting、span-kind filters、文本搜索与 raw JSON payload。
+- `traces open <run_id>` 会写出同一个单文件 HTML viewer，并尝试用默认浏览器打开。无头终端、CI 或测试场景使用 `--no-browser`。
+
+## 最新报告
+
+`report latest` 是只读的本地证据状态面板：
+
+- benchmark report 是否存在、成功数量与分数
+- public-eval profile、已完成记录数与 BFCL headline score
+- real-network pass/fail/skip 数量与生成时间
+- 当前配置 storage 中最近 run 的状态计数
+
+如果某个 report 文件不存在，命令会把该项标为 `missing`，但仍继续返回其他面板信息。比较临时或归档 artifact 时，可以使用 report path override flags。
 
 Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_id`、`parent_span_id`、`kind`、`status`、duration、input/output hash、retry count、checkpoint id 与 child spans。这样当前 JSON trace 仍然轻量，同时为后续 OpenTelemetry export 留出路径。
 

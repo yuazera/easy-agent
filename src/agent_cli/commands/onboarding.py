@@ -121,6 +121,15 @@ def register(app: typer.Typer) -> None:
 
         asyncio.run(_run())
 
+    @app.command('new')
+    def new_scenario(
+        scenario: str = typer.Argument(..., help='Starter scenario name.'),
+        dest: str | None = typer.Argument(None, help='Destination directory. Defaults to the scenario name.'),
+        force: bool = typer.Option(False, '--force', help='Overwrite generated files when they already exist.'),
+    ) -> None:
+        destination = Path(dest) if dest else Path(scenario)
+        _create_template(scenario, destination, force)
+
 
 @template_app.command('list')
 def list_templates() -> None:
@@ -138,10 +147,13 @@ def create_template(
     dest: str = typer.Argument(..., help='Destination directory.'),
     force: bool = typer.Option(False, '--force', help='Overwrite generated files when they already exist.'),
 ) -> None:
+    _create_template(name, Path(dest), force)
+
+
+def _create_template(name: str, destination: Path, force: bool) -> None:
     templates = _templates()
     if name not in templates:
         raise typer.BadParameter(f"Unknown template '{name}'. Run 'easy-agent template list'.")
-    destination = Path(dest)
     files = templates[name]['files']
     if not isinstance(files, dict):
         raise RuntimeError(f"Template '{name}' is invalid.")
@@ -367,6 +379,22 @@ def _templates() -> dict[str, dict[str, Any]]:
                 _workbench_template_config(),
             ),
         },
+        'coding-agent': {
+            'description': 'Business-ready coding assistant with a process workbench smoke path.',
+            'files': _template_files(
+                'coding-agent',
+                'A practical starter for coding tasks, local files, and workbench-backed tool runs.',
+                _coding_agent_template_config(),
+            ),
+        },
+        'research-agent': {
+            'description': 'Business-ready research assistant with official-source search wiring.',
+            'files': _template_files(
+                'research-agent',
+                'A practical starter for source-first research tasks with optional live search.',
+                _research_agent_template_config(),
+            ),
+        },
     }
 
 
@@ -409,8 +437,11 @@ def _template_env_example(name: str) -> str:
         lines.append('SERPAPI_API_KEY=<SECRET>')
     elif name == 'federation-loopback':
         lines.append('EASY_AGENT_FEDERATION_TOKEN=<SECRET>')
-    elif name in {'mcp-filesystem-agent', 'workbench-coding-agent'}:
+    elif name in {'mcp-filesystem-agent', 'workbench-coding-agent', 'coding-agent'}:
         lines.append('# No credentials are required for the mock-backed smoke path.')
+    elif name == 'research-agent':
+        lines.append('# No credentials are required for the mock-backed smoke path.')
+        lines.append('SERPAPI_API_KEY=<SECRET>')
     else:
         lines.append('DEEPSEEK_API_KEY=<SECRET>')
     return '\n'.join(lines) + '\n'
@@ -494,6 +525,95 @@ def _workbench_template_config() -> str:
           session_ttl_seconds: 3600
         """
     )
+
+
+def _coding_agent_template_config() -> str:
+    return dedent(
+        """
+        model:
+          provider: mock
+          protocol: mock
+          model: mock-agent
+          base_url: mock://local
+          api_key_env: EASY_AGENT_MOCK_API_KEY
+
+        graph:
+          name: coding_agent
+          entrypoint: coder
+          agents:
+            - name: coder
+              description: Coding assistant for local repository tasks.
+              system_prompt: |
+                You are a pragmatic coding assistant. For mock smoke runs, call python_echo once.
+                For real coding work, inspect the task, keep changes scoped, and summarize files changed.
+              tools:
+                - python_echo
+              max_iterations: 4
+          nodes: []
+
+        skills:
+          - path: skills/examples
+
+        executors:
+          - name: process
+            kind: process
+            default_timeout_seconds: 30
+
+        workbench:
+          root: .easy-agent/workbench
+          default_executor: process
+          session_ttl_seconds: 3600
+
+        storage:
+          path: .easy-agent
+          database: state.db
+
+        security:
+          sandbox:
+            mode: auto
+            working_root: .
+        """
+    ).lstrip()
+
+
+def _research_agent_template_config() -> str:
+    return dedent(
+        """
+        model:
+          provider: mock
+          protocol: mock
+          model: mock-agent
+          base_url: mock://local
+          api_key_env: EASY_AGENT_MOCK_API_KEY
+
+        graph:
+          name: research_agent
+          entrypoint: researcher
+          agents:
+            - name: researcher
+              description: Source-first research assistant.
+              system_prompt: |
+                You are a source-first research assistant. For mock smoke runs, call python_echo once.
+                For live research, prefer official_source_search with preferred official domains before using general sources.
+              tools:
+                - python_echo
+                - official_source_search
+              max_iterations: 5
+          nodes: []
+
+        skills:
+          - path: skills/examples
+
+        storage:
+          path: .easy-agent
+          database: state.db
+
+        security:
+          sandbox:
+            mode: auto
+            working_root: .
+        """
+    ).lstrip()
 
 
 def _run_debug_commands(run_id: str, config_path: Path) -> list[str]:

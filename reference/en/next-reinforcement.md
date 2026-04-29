@@ -19,10 +19,11 @@ Current public agent-building guidance puts the shortest path first: create one 
 Next reinforcement for usability:
 
 - keep `setup --provider mock` and `quickstart --provider mock` as the first commands in docs and CI smoke, because they prove config loading, skills, storage, tool calls, trace persistence, and preflight diagnostics without requiring secrets
+- keep `new <scenario>` as the shortest path from intent to a runnable project, with business starters such as `coding-agent` and `research-agent` proving common workflows before users write YAML by hand
 - keep `config doctor` as the static risk gate before live-provider runs, with checks for env readiness, MCP roots/auth, federation auth, executor readiness, storage portability, and human-loop coverage
 - keep template variants mapped to shipped runtime contracts, then deepen them with focused smoke tests for approval flow, harness flow, MCP resource catalog flow, federation loopback flow, and workbench-backed coding tasks
 - make `runs explain` the default next step after failed runs, and extend classifiers for provider schema errors, HTTP status buckets, approval states, MCP startup failures, and duplicated tool loops
-- keep traces as the debugging source of truth first, use the searchable HTML export for local inspection, then promote stable trace fields into public evaluation and OpenTelemetry export contracts
+- keep traces as the debugging source of truth first, use `traces open` and the searchable HTML export for local inspection, use `report latest` to summarize available evidence, then promote stable trace fields into public evaluation and OpenTelemetry export contracts
 - make every new high-level feature ship with a mock-backed smoke path plus an optional live-provider path, so first-run experience stays reliable even when credentials are missing
 
 Reference:

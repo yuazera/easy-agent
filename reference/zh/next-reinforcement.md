@@ -19,10 +19,11 @@
 下一步可落地的易用性补强：
 
 - 把 `setup --provider mock` 与 `quickstart --provider mock` 保持为文档和 CI smoke 的第一组命令，因为它们可以在无 secret 的情况下验证 config loading、skills、storage、tool calls、trace persistence 与 preflight diagnostics
+- 把 `new <scenario>` 保持为从意图到可运行项目的最短路径，用 `coding-agent`、`research-agent` 这类业务 starter 先证明常见 workflow，再让用户手写 YAML
 - 把 `config doctor` 保持为 live-provider 运行前的静态风险门禁，覆盖 env readiness、MCP roots/auth、federation auth、executor readiness、storage portability 与 human-loop coverage
 - 模板继续只围绕已交付 runtime contract 扩展，并为 approval flow、harness flow、MCP resource catalog flow、federation loopback flow 与 workbench-backed coding tasks 增加 focused smoke tests
 - 把 `runs explain` 做成失败 run 后默认的下一步，并继续扩展 provider schema error、HTTP status bucket、approval state、MCP startup failure 与 duplicated tool loop 分类
-- 让 trace 先作为排障事实来源，用可搜索 HTML export 改善本地检查体验，等字段稳定后再提升为 public evaluation 与 OpenTelemetry export contract
+- 让 trace 先作为排障事实来源，用 `traces open` 和可搜索 HTML export 改善本地检查体验，用 `report latest` 汇总可用证据，等字段稳定后再提升为 public evaluation 与 OpenTelemetry export contract
 - 每个新的高层能力都配套 mock-backed smoke path 和可选 live-provider path，让首次运行不再依赖本地凭据是否齐全
 
 参考：

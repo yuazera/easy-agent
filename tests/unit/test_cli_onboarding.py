@@ -34,6 +34,8 @@ def test_template_commands_list_and_create(tmp_path: Path) -> None:
     assert listed.exit_code == 0
     assert 'basic-agent' in listed.output
     assert 'longrun-harness' in listed.output
+    assert 'coding-agent' in listed.output
+    assert 'research-agent' in listed.output
     assert created.exit_code == 0
     assert (destination / 'easy-agent.yml').exists()
     assert 'easy-agent config doctor' in (destination / 'README.md').read_text(encoding='utf-8')
@@ -51,6 +53,8 @@ def test_all_templates_create_valid_configs(tmp_path: Path) -> None:
         'eval-smoke',
         'federation-loopback',
         'workbench-coding-agent',
+        'coding-agent',
+        'research-agent',
     ]
 
     listed = runner.invoke(app, ['template', 'list'])
@@ -64,6 +68,22 @@ def test_all_templates_create_valid_configs(tmp_path: Path) -> None:
         load_config(destination / 'easy-agent.yml')
         assert (destination / 'README.md').exists()
         assert (destination / '.env.local.example').exists()
+
+
+def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    coding = runner.invoke(app, ['new', 'coding-agent'])
+    research = runner.invoke(app, ['new', 'research-agent', 'research-starter'])
+
+    assert coding.exit_code == 0
+    assert research.exit_code == 0
+    load_config(tmp_path / 'coding-agent' / 'easy-agent.yml')
+    load_config(tmp_path / 'research-starter' / 'easy-agent.yml')
+    assert 'workbench' in (tmp_path / 'coding-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'official_source_search' in (tmp_path / 'research-starter' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'SERPAPI_API_KEY=<SECRET>' in (tmp_path / 'research-starter' / '.env.local.example').read_text(encoding='utf-8')
 
 
 def test_quickstart_runs_offline_mock_provider(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
