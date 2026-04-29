@@ -3,7 +3,7 @@
 ## Snapshot Policy
 
 - Release `0.3.5` publishes benchmark, public-eval, Python verification, and real-network snapshots refreshed on April 14, 2026.
-- The latest unreleased verification refresh on April 29, 2026 keeps the April 14 benchmark and headline public-eval score snapshot, while refreshing Python verification and the real-network suite. The live provider compatibility matrix remains the April 20 verification snapshot.
+- The latest unreleased verification refresh on April 29, 2026 keeps the April 14 benchmark and headline public-eval score snapshot, while refreshing Python verification, connector/task/report CLI checks, and the real-network suite. The live provider compatibility matrix remains the April 20 verification snapshot.
 - Public docs in this repository intentionally expose methodology and scores only; local collaboration logs are not part of the repository-facing surface.
 
 ## Benchmark Snapshot
@@ -137,12 +137,13 @@ The README keeps the comparison high level. This page keeps the public evidence 
 This round uses Python-based verification only.
 
 - Static checks: `ruff` and `mypy`
-- Targeted regressions around setup preflight, config explanation, config doctor, searchable HTML trace export, local trace opening, latest-report summarization and HTML export, Python facade embedding, mock provider, onboarding CLI, scenario creation, run explanation, provider compatibility, config validation, guardrails, BFCL evaluation, official-source search, and simple-evals profile support: `18 passed`, `36 passed`, `89 passed`, and `4 passed`
-- Full unit coverage: `217 passed`
+- Targeted regressions around setup preflight, config explanation, config doctor, searchable HTML trace export, local trace opening, latest-report summarization and HTML export, report trend, experimental OTel trace export, connector diagnostics, task packs, local skill catalog, plugin doctor, Python facade embedding, mock provider, onboarding CLI, scenario creation, run explanation, provider compatibility, config validation, guardrails, BFCL evaluation, official-source search, and simple-evals profile support: `23 passed`, `36 passed`, `89 passed`, and `4 passed`
+- Full unit coverage: `222 passed`
 - Targeted live provider-compatibility regression: `1 passed`
 - Full real integration coverage: `7 passed`, `2 warnings`
 - The retained benchmark and headline public-eval scores still point at the April 14 release snapshot, the live provider-compatibility evidence remains the April 20 snapshot, and the real-network artifact was refreshed on April 29
 - The remaining warnings are known Windows asyncio subprocess cleanup warnings after successful completion
-- New focused regressions cover setup preflight, config explanation, config doctor, searchable HTML trace export, `traces open`, `report latest`, latest-report HTML export, offline mock runs, starter templates, `new <scenario>` for coding/research/data/ops/browser starters, Python `AgentApp`, quickstart, run explanation, run listing, run summary, structured trace tree export, executor capability reports, storage contracts, and real-network scenario proof metadata.
+- New focused regressions cover setup preflight, config explanation, config doctor, searchable HTML trace export, `traces open`, `report latest`, `report trend`, latest-report HTML export, experimental OTel trace export, connector diagnostics, task packs, local skill catalog install, plugin doctor, offline mock runs, starter templates, `new <scenario>` for coding/research/data/ops/browser/support/sales/document/QA/release starters, Python `AgentApp`, quickstart, run explanation, run listing, run summary, structured trace tree export, executor capability reports, storage contracts, and real-network scenario proof metadata.
+- CLI smoke passed for `connectors doctor`, `connectors test browser`, `task show repo-review`, `report trend`, `skills catalog list`, and `new customer-support-agent`.
 
 Exact machine-local execution logs stay outside the repository-facing documentation surface.

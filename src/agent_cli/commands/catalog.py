@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import time
+from pathlib import Path
 from typing import Any
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -14,6 +17,7 @@ from agent_runtime import EasyAgentRuntime, build_runtime
 
 console = Console()
 skills_app = typer.Typer(help='Inspect registered skills.')
+skills_catalog_app = typer.Typer(help='Inspect and install local skill catalog entries.')
 mcp_app = typer.Typer(help='Inspect discovered MCP tools.')
 plugins_app = typer.Typer(help='Inspect loaded plugins.')
 teams_app = typer.Typer(help='Inspect configured agent teams.')
@@ -29,6 +33,7 @@ mcp_app.add_typer(mcp_roots_app, name='roots')
 mcp_app.add_typer(mcp_resources_app, name='resources')
 mcp_app.add_typer(mcp_prompts_app, name='prompts')
 federation_app.add_typer(federation_auth_app, name='auth')
+skills_app.add_typer(skills_catalog_app, name='catalog')
 
 
 @skills_app.command('list')
@@ -292,6 +297,108 @@ def federation_auth_status(
         console.print_json(json.dumps(runtime.federation_auth_status(remote_name), ensure_ascii=False))
     finally:
         asyncio.run(runtime.aclose())
+
+
+@plugins_app.command('doctor')
+def doctor_plugins(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    from agent_config.app import load_config
+
+    loaded = load_config(config)
+    checks: list[dict[str, str]] = []
+    for source in loaded.plugins:
+        path = Path(source)
+        if path.exists():
+            checks.append({'name': source, 'status': 'ok', 'message': 'Local plugin path exists.', 'action': 'No action needed.'})
+        else:
+            checks.append({'name': source, 'status': 'warn', 'message': 'Plugin is treated as an entry point and was not resolved statically.', 'action': 'Install the package that exposes this entry point before runtime load.'})
+    for skill_source in loaded.skills:
+        path = Path(skill_source.path)
+        manifest = path / 'skill.yaml' if path.is_dir() else path
+        checks.append(
+            {
+                'name': skill_source.path,
+                'status': 'ok' if manifest.exists() or skill_source.optional else 'warn',
+                'message': 'Skill path is available.' if manifest.exists() else 'Skill path is missing.',
+                'action': 'No action needed.' if manifest.exists() else 'Install the skill or mark the source optional.',
+            }
+        )
+    if not checks:
+        checks.append({'name': 'plugins', 'status': 'ok', 'message': 'No plugins are configured.', 'action': 'No action needed.'})
+    payload = {'checks': checks}
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    table = Table(title='plugins doctor')
+    table.add_column('Status', style='cyan')
+    table.add_column('Name', style='green')
+    table.add_column('Message')
+    table.add_column('Action')
+    for check in checks:
+        table.add_row(check['status'], check['name'], check['message'], check['action'])
+    console.print(table)
+
+
+@skills_catalog_app.command('list')
+def list_skill_catalog(
+    root: str = typer.Option('skills', '--root', help='Local skills root.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    payload = _local_skill_catalog(Path(root))
+    if output_format == 'json':
+        console.print_json(json.dumps({'skills': payload}, ensure_ascii=False))
+        return
+    table = Table(title='local skill catalog')
+    table.add_column('Name', style='cyan')
+    table.add_column('Risk', style='yellow')
+    table.add_column('Source', style='green')
+    table.add_column('Description')
+    for item in payload:
+        table.add_row(str(item['name']), str(item.get('risk') or '-'), str(item['path']), str(item.get('description') or '-'))
+    console.print(table)
+
+
+@skills_catalog_app.command('install')
+def install_skill_catalog(
+    name: str = typer.Argument(..., help='Skill name from skills catalog list.'),
+    root: str = typer.Option('skills', '--root', help='Local skills root.'),
+    target: str = typer.Option('skills/installed', '--target', help='Destination directory for installed skills.'),
+    force: bool = typer.Option(False, '--force', help='Overwrite an existing installed copy.'),
+) -> None:
+    catalog = _local_skill_catalog(Path(root))
+    match = next((item for item in catalog if item['name'] == name), None)
+    if match is None:
+        raise typer.BadParameter(f'Unknown skill: {name}')
+    source = Path(str(match['path']))
+    destination = Path(target) / name
+    if destination.exists() and not force:
+        raise typer.BadParameter(f'{destination} already exists; pass --force to overwrite.')
+    shutil.copytree(source, destination, dirs_exist_ok=force)
+    console.print_json(json.dumps({'skill': name, 'source': str(source), 'destination': str(destination)}, ensure_ascii=False))
+
+
+def _local_skill_catalog(root: Path) -> list[dict[str, Any]]:
+    if not root.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    for manifest in sorted(root.rglob('skill.yaml')):
+        payload = yaml.safe_load(manifest.read_text(encoding='utf-8')) or {}
+        if not isinstance(payload, dict):
+            continue
+        items.append(
+            {
+                'name': str(payload.get('name') or manifest.parent.name),
+                'description': str(payload.get('description') or ''),
+                'entry_type': str(payload.get('entry_type') or ''),
+                'risk': str(payload.get('risk') or 'low'),
+                'dependencies': payload.get('dependencies') if isinstance(payload.get('dependencies'), list) else [],
+                'smoke_prompt': str(payload.get('smoke_prompt') or ''),
+                'path': str(manifest.parent),
+            }
+        )
+    return items
 
 
 @federation_auth_app.command('login')

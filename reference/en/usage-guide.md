@@ -33,6 +33,11 @@ uv run easy-agent new research-agent <target-dir>
 uv run easy-agent new data-agent
 uv run easy-agent new ops-agent
 uv run easy-agent new browser-agent <target-dir>
+uv run easy-agent new customer-support-agent
+uv run easy-agent new sales-agent
+uv run easy-agent new document-agent
+uv run easy-agent new qa-agent
+uv run easy-agent new release-agent
 uv run easy-agent init --provider mock
 uv run easy-agent quickstart --provider mock
 uv run easy-agent template list
@@ -50,8 +55,20 @@ uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml --html --output trace.html
 uv run easy-agent traces open <run_id> -c easy-agent.yml --no-browser
+uv run easy-agent traces export <run_id> -c easy-agent.yml --otel-json --output trace-otel.json
 uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent report latest -c easy-agent.yml --html --output report.html
+uv run easy-agent report trend --history reports --html --output trend.html
+uv run easy-agent connectors list -c easy-agent.yml
+uv run easy-agent connectors doctor -c easy-agent.yml
+uv run easy-agent connectors test model -c easy-agent.yml
+uv run easy-agent task list
+uv run easy-agent task show repo-review
+uv run easy-agent task run repo-review -c easy-agent.yml --dry-run
+uv run easy-agent skills catalog list
+uv run easy-agent skills catalog install python_echo --target skills/installed --force
+uv run easy-agent plugins doctor -c easy-agent.yml
+uv run easy-agent integration federation-demo -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -82,6 +99,11 @@ Use the `mock` provider when you want to verify the runtime, tools, storage, and
 - `template create data-agent <target-dir>` creates a business-oriented data starter for CSV, JSON, logs, metric summaries, and evidence-backed recommendations.
 - `template create ops-agent <target-dir>` creates a business-oriented operations starter for diagnostics, runbooks, incident notes, and release checks.
 - `template create browser-agent <target-dir>` creates a mock-first browser task-planning starter. It does not install a browser runtime; wire a real connector only after the planning flow and safety checks are clear.
+- `template create customer-support-agent <target-dir>` creates a support triage and response-drafting starter.
+- `template create sales-agent <target-dir>` creates a sales qualification and follow-up starter.
+- `template create document-agent <target-dir>` creates a document summary, extraction, and docs-refresh starter.
+- `template create qa-agent <target-dir>` creates a QA planning and acceptance-check starter.
+- `template create release-agent <target-dir>` creates a release readiness and evidence-review starter.
 - `config explain` summarizes model/provider choices, entrypoint type, agents, tools, teams, harnesses, MCP, storage, executors, federation, eval settings, and required environment variables without printing secret values.
 - `config doctor` performs static risk checks without starting model clients or MCP servers. It reports Python baseline drift, missing live env vars, missing local tools, MCP roots/auth gaps, federation auth gaps, workbench executor readiness, human-loop coverage, storage portability, and eval credential readiness.
 - Generated templates include a local README, a minimal `.env.local.example`, and a mock-first smoke command path. Template smoke starts with `config doctor`, then runs a short task and exports an HTML trace for the new run id.
@@ -98,6 +120,7 @@ Durable run inspection now has two layers:
 - `traces export <run_id>` returns a structured trace tree by default.
 - `traces export <run_id> --raw` returns the historical raw trace payload.
 - `traces export <run_id> --html --output trace.html` writes a standalone HTML trace viewer for the structured tree, including summary cards, status/error highlighting, span-kind filters, text search, and the raw JSON payload.
+- `traces export <run_id> --otel-json --output trace-otel.json` writes an experimental OpenTelemetry-style JSON mapping. Keep the native trace tree as the source of truth until the GenAI semantic conventions stabilize.
 - `traces open <run_id>` writes the same standalone HTML viewer and opens it in the default browser. Use `--no-browser` for headless terminals, CI, or tests.
 
 ## Latest Report
@@ -113,7 +136,20 @@ If a report file is absent, the command marks that surface as `missing` and stil
 
 Use `report latest --html --output report.html` when the terminal table is too dense. The exported file is standalone and includes the same benchmark, public-eval, real-network, recent-run, and raw JSON evidence.
 
+`report trend` compares local report artifacts in a directory and shows the latest score, previous score, and score delta for benchmark, public-eval, and real-network reports. Use `--html --output trend.html` for a standalone trend page.
+
 Trace-tree spans are derived from the existing runtime event envelope and include stable `span_id`, `parent_span_id`, `kind`, `status`, duration, input/output hashes, retry count, checkpoint id, and child spans. This keeps the current JSON trace path lightweight while leaving a future OpenTelemetry export path open.
+
+## Connectors and Task Packs
+
+- `connectors list` shows configured connector surfaces such as model, storage, search, MCP, workbench, federation, and browser readiness.
+- `connectors doctor` performs static connector checks without starting high-risk external flows.
+- `connectors test <name>` focuses on one connector from the list.
+- `task list` shows built-in task packs.
+- `task show <pack>` prints the prompt template, recommended scenario, and acceptance criteria.
+- `task run <pack>` renders and runs the task through the configured entrypoint. Use `--dry-run` to inspect the prompt before execution.
+
+Built-in task packs currently include `repo-review`, `bug-fix`, `docs-refresh`, `release-check`, `data-summary`, and `federation-loopback-demo`.
 
 ## Python Facade
 
@@ -125,6 +161,9 @@ from agent_runtime import AgentApp
 app = AgentApp.from_config("easy-agent.yml")
 try:
     result = app.run("Summarize this task")
+    task_result = app.run_task("repo-review", context="Focus on tests")
+    report = app.report()
+    trace = app.trace(str(result["run_id"]))
 finally:
     app.close()
 ```

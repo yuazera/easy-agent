@@ -2,6 +2,9 @@ name: python_echo
 description: Return the prompt and metadata through a Python hook.
 entry_type: python
 hook: hook.py:run
+risk: low
+dependencies: []
+smoke_prompt: Echo this smoke prompt once.
 input_schema:
   type: object
   properties:

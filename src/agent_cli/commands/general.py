@@ -7,7 +7,7 @@ import sys
 import webbrowser
 from html import escape
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -19,6 +19,13 @@ from agent_common.version import runtime_version
 from agent_protocols import resolve_protocol
 from agent_runtime import EasyAgentRuntime, build_runtime
 from agent_runtime.diagnostics import explain_run
+from agent_runtime.reports import (
+    build_report_trend,
+    latest_report_html,
+    latest_report_payload,
+    report_trend_html,
+)
+from agent_runtime.trace_export import trace_tree_to_otel_json
 
 console = Console()
 runs_app = typer.Typer(help='Inspect durable run records.')
@@ -191,12 +198,17 @@ def export_trace(
     config: str = typer.Option('easy-agent.yml', '-c', '--config'),
     tree: bool = typer.Option(True, '--tree/--raw', help='Export structured trace tree by default, or raw trace with --raw.'),
     html: bool = typer.Option(False, '--html', help='Export the structured trace tree as a standalone HTML file.'),
+    otel_json: bool = typer.Option(False, '--otel-json', help='Export an experimental OpenTelemetry-style JSON mapping.'),
     output: str | None = typer.Option(None, '-o', '--output', help='Output file for --html exports.'),
 ) -> None:
     if html and not tree:
         raise typer.BadParameter('--html requires the structured tree export; remove --raw.')
-    if html and output is None:
-        raise typer.BadParameter('--html requires --output <path>.')
+    if otel_json and not tree:
+        raise typer.BadParameter('--otel-json requires the structured tree export; remove --raw.')
+    if html and otel_json:
+        raise typer.BadParameter('Use only one export format: --html or --otel-json.')
+    if (html or otel_json) and output is None:
+        raise typer.BadParameter('--html and --otel-json require --output <path>.')
     runtime = build_runtime(config)
     try:
         payload = runtime.store.load_trace_tree(run_id) if tree else runtime.store.load_trace(run_id)
@@ -205,6 +217,13 @@ def export_trace(
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(_trace_tree_html(payload), encoding='utf-8')
             console.print_json(json.dumps({'run_id': run_id, 'output': str(output_path)}, ensure_ascii=False))
+            return
+        if otel_json:
+            output_path = Path(str(output))
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            mapped = trace_tree_to_otel_json(payload)
+            output_path.write_text(json.dumps(mapped, ensure_ascii=False, indent=2), encoding='utf-8')
+            console.print_json(json.dumps({'run_id': run_id, 'output': str(output_path), 'experimental': True}, ensure_ascii=False))
             return
         console.print_json(json.dumps(payload, ensure_ascii=False))
     finally:
@@ -243,20 +262,19 @@ def latest_report(
     html: bool = typer.Option(False, '--html', help='Write the latest report as a standalone HTML file.'),
     output: str | None = typer.Option(None, '-o', '--output', help='Output file for --html exports.'),
 ) -> None:
-    payload = {
-        'reports': {
-            'benchmark': _summarize_benchmark_report(Path(benchmark_report)),
-            'public_eval': _summarize_public_eval_report(Path(public_eval_report)),
-            'real_network': _summarize_real_network_report(Path(real_network_report)),
-        },
-        'runs': _summarize_recent_runs(Path(config), run_limit),
-    }
+    payload = latest_report_payload(
+        Path(config),
+        benchmark_report=Path(benchmark_report),
+        public_eval_report=Path(public_eval_report),
+        real_network_report=Path(real_network_report),
+        run_limit=run_limit,
+    )
     if html:
         if output is None:
             raise typer.BadParameter('--html requires --output <path>.')
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(_latest_report_html(payload), encoding='utf-8')
+        output_path.write_text(latest_report_html(payload), encoding='utf-8')
         console.print_json(json.dumps({'output': str(output_path), 'reports': payload['reports'], 'runs': payload['runs']}, ensure_ascii=False))
         return
     if output_format == 'json':
@@ -281,179 +299,47 @@ def latest_report(
     console.print(table)
 
 
-def _read_json_report(path: Path) -> dict[str, Any] | None:
-    if not path.is_file():
-        return None
-    return cast(dict[str, Any], json.loads(path.read_text(encoding='utf-8')))
-
-
-def _score(successes: int, runs: int) -> float | None:
-    if runs <= 0:
-        return None
-    return round(successes / runs * 100, 4)
-
-
-def _summarize_benchmark_report(path: Path) -> dict[str, Any]:
-    report = _read_json_report(path)
-    if report is None:
-        return {'status': 'missing', 'path': str(path), 'score': None, 'summary': 'report not found'}
-    raw_summary = report.get('summary')
-    summary = cast(dict[str, Any], raw_summary) if isinstance(raw_summary, dict) else {}
-    runs = sum(int(item.get('runs') or 0) for item in summary.values() if isinstance(item, dict))
-    successes = sum(int(item.get('successes') or 0) for item in summary.values() if isinstance(item, dict))
-    failures = sum(int(item.get('failures') or 0) for item in summary.values() if isinstance(item, dict))
-    return {
-        'status': 'available',
-        'path': str(path),
-        'score': _score(successes, runs),
-        'summary': f'{successes}/{runs} succeeded, {failures} failed',
-        'runs': runs,
-        'successes': successes,
-        'failures': failures,
-    }
-
-
-def _summarize_public_eval_report(path: Path) -> dict[str, Any]:
-    report = _read_json_report(path)
-    if report is None:
-        return {'status': 'missing', 'path': str(path), 'score': None, 'summary': 'report not found'}
-    raw_summary = report.get('summary')
-    summary = cast(dict[str, Any], raw_summary) if isinstance(raw_summary, dict) else {}
-    raw_overall = summary.get('overall')
-    overall = cast(dict[str, Any], raw_overall) if isinstance(raw_overall, dict) else {}
-    score_value = overall.get('bfcl_subcategory_accuracy')
-    if score_value is None:
-        score_value = overall.get('bfcl_case_pass_rate')
-    score = round(float(score_value) * 100, 4) if isinstance(score_value, int | float) else None
-    raw_case_counts = report.get('case_counts')
-    case_counts = cast(dict[str, Any], raw_case_counts) if isinstance(raw_case_counts, dict) else {}
-    completed = case_counts.get('completed_records')
-    return {
-        'status': 'available',
-        'path': str(path),
-        'score': score,
-        'summary': f"profile={report.get('profile', '-')}, completed={completed or '-'}",
-        'profile': report.get('profile'),
-        'completed_records': completed,
-    }
-
-
-def _summarize_real_network_report(path: Path) -> dict[str, Any]:
-    report = _read_json_report(path)
-    if report is None:
-        return {'status': 'missing', 'path': str(path), 'score': None, 'summary': 'report not found'}
-    raw_summary = report.get('summary')
-    summary = cast(dict[str, Any], raw_summary) if isinstance(raw_summary, dict) else {}
-    runs = int(summary.get('runs') or 0)
-    passed = int(summary.get('passed') or 0)
-    failed = int(summary.get('failed') or 0)
-    skipped = int(summary.get('skipped') or 0)
-    return {
-        'status': 'available',
-        'path': str(path),
-        'score': _score(passed, runs),
-        'summary': f'{passed}/{runs} passed, {failed} failed, {skipped} skipped',
-        'generated_at': report.get('generated_at'),
-        'runs': runs,
-        'passed': passed,
-        'failed': failed,
-        'skipped': skipped,
-    }
-
-
-def _summarize_recent_runs(config: Path, limit: int) -> dict[str, Any]:
-    if not config.is_file():
-        return {'status': 'missing_config', 'config': str(config), 'summary': {}}
-    try:
-        runtime = build_runtime(config)
-    except Exception as exc:
-        return {'status': 'unavailable', 'config': str(config), 'error': str(exc), 'summary': {}}
-    try:
-        runs = runtime.store.list_runs(limit=limit)
-        by_status: dict[str, int] = {}
-        for run in runs:
-            status = str(run.get('status') or 'unknown')
-            by_status[status] = by_status.get(status, 0) + 1
-        return {
-            'status': 'available',
-            'config': str(config),
-            'summary': {'total': len(runs), 'by_status': by_status},
-            'latest_run_id': str(runs[0]['run_id']) if runs else None,
-        }
-    finally:
-        asyncio.run(runtime.aclose())
-
-
-def _latest_report_html(payload: dict[str, Any]) -> str:
-    reports_raw = payload.get('reports')
-    reports = cast(dict[str, Any], reports_raw) if isinstance(reports_raw, dict) else {}
-    runs_raw = payload.get('runs')
-    runs = cast(dict[str, Any], runs_raw) if isinstance(runs_raw, dict) else {}
-    cards: list[str] = []
-    for name, item_raw in reports.items():
-        item = cast(dict[str, Any], item_raw) if isinstance(item_raw, dict) else {}
-        cards.append(
-            '<section class="card">'
-            f'<h2>{escape(str(name))}</h2>'
-            f'<div class="status">{escape(str(item.get("status", "unknown")))}</div>'
-            f'<p class="score">{escape(str(item.get("score") if item.get("score") is not None else "-"))}</p>'
-            f'<p>{escape(str(item.get("summary") or "-"))}</p>'
-            f'<pre>{escape(json.dumps(item, ensure_ascii=False, indent=2, default=str))}</pre>'
-            '</section>'
-        )
-    cards.append(
-        '<section class="card">'
-        '<h2>runs</h2>'
-        f'<div class="status">{escape(str(runs.get("status", "unknown")))}</div>'
-        f'<p>{escape(json.dumps(runs.get("summary", {}), ensure_ascii=False, default=str))}</p>'
-        f'<pre>{escape(json.dumps(runs, ensure_ascii=False, indent=2, default=str))}</pre>'
-        '</section>'
-    )
-    raw_json = escape(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>easy-agent latest report</title>
-  <style>
-    :root {{ color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
-    body {{ margin: 0; background: #f6f7f9; color: #1d2430; }}
-    main {{ width: min(1120px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 48px; }}
-    h1 {{ margin: 0 0 6px; font-size: 28px; line-height: 1.2; }}
-    .lead {{ margin: 0 0 24px; color: #526070; }}
-    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }}
-    .card {{ background: #ffffff; border: 1px solid #d8dee7; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px rgba(20, 30, 45, 0.06); }}
-    .card h2 {{ margin: 0 0 10px; font-size: 16px; }}
-    .status {{ display: inline-flex; padding: 3px 8px; border-radius: 999px; background: #e7f0ff; color: #164f9f; font-size: 12px; font-weight: 700; }}
-    .score {{ margin: 14px 0 8px; font-size: 28px; font-weight: 750; }}
-    pre {{ overflow: auto; max-height: 280px; margin: 12px 0 0; padding: 12px; border-radius: 6px; background: #101827; color: #d8e3f8; font-size: 12px; }}
-    details {{ margin-top: 18px; }}
-    summary {{ cursor: pointer; font-weight: 700; }}
-    @media (prefers-color-scheme: dark) {{
-      body {{ background: #101419; color: #e7ecf3; }}
-      .lead {{ color: #a7b3c4; }}
-      .card {{ background: #171d25; border-color: #2a3340; box-shadow: none; }}
-      .status {{ background: #17345c; color: #9fc6ff; }}
-    }}
-  </style>
-</head>
-<body>
-  <main>
-    <h1>easy-agent latest report</h1>
-    <p class="lead">Local benchmark, public-eval, real-network, and recent-run evidence.</p>
-    <div class="grid">
-      {''.join(cards)}
-    </div>
-    <details>
-      <summary>Raw JSON</summary>
-      <pre>{raw_json}</pre>
-    </details>
-  </main>
-</body>
-</html>
-"""
-
+@report_app.command('trend')
+def trend_report(
+    history: str = typer.Option('.easy-agent', '--history', help='Directory containing local report JSON artifacts.'),
+    limit: int = typer.Option(10, '--limit', min=1, max=100),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+    html: bool = typer.Option(False, '--html', help='Write the trend report as a standalone HTML file.'),
+    output: str | None = typer.Option(None, '-o', '--output', help='Output file for --html exports.'),
+) -> None:
+    payload = build_report_trend(Path(history), limit=limit)
+    if html:
+        if output is None:
+            raise typer.BadParameter('--html requires --output <path>.')
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(report_trend_html(payload), encoding='utf-8')
+        console.print_json(json.dumps({'output': str(output_path), 'trend': payload}, ensure_ascii=False))
+        return
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title='easy-agent report trend')
+    table.add_column('Surface', style='cyan')
+    table.add_column('Latest Score', style='green')
+    table.add_column('Delta', style='yellow')
+    table.add_column('Summary')
+    surfaces = payload.get('surfaces', {})
+    if isinstance(surfaces, dict):
+        for name, raw_item in surfaces.items():
+            item = raw_item if isinstance(raw_item, dict) else {}
+            raw_latest = item.get('latest')
+            latest = raw_latest if isinstance(raw_latest, dict) else {}
+            latest_score = latest.get('score')
+            table.add_row(
+                str(name),
+                str(latest_score if latest_score is not None else '-'),
+                str(item.get('score_delta') if item.get('score_delta') is not None else '-'),
+                str(latest.get('summary') or latest.get('status') or '-'),
+            )
+    console.print(table)
 
 
 def register(app: typer.Typer) -> None:

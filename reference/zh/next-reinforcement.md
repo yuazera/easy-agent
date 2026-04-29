@@ -11,6 +11,7 @@
 - 把 raw official BFCL v4 归一化路径继续推进到更广的 agentic 与 multihop 覆盖，并补齐更清晰的官方分类诊断。
 - 在拿到本地数据导出与 grader 凭据后，把新交付的 `official_source_search` 与 `browsecomp_subset` / `simpleqa_subset` 支持推进成可刷新分数的评测切片。
 - 在不随意扩大 model-facing runtime surface 的前提下，继续深化 MCP 通知对齐，包括 resource updates、prompt-detail refresh 与 template diff telemetry。
+- 把 connector diagnostics、内置 task packs、report trend、本地 skill catalog workflow 与 federation-demo checks 作为下一层 operator-facing 易用性入口，再考虑引入更重的 runtime 依赖。
 
 ## 上手与诊断补强
 
@@ -26,12 +27,27 @@
 - 让 trace 先作为排障事实来源，用 `traces open` 和可搜索 HTML export 改善本地检查体验，用 `report latest` 及其 HTML export 汇总可用证据，等字段稳定后再提升为 public evaluation 与 OpenTelemetry export contract
 - 每个新的高层能力都配套 mock-backed smoke path 和可选 live-provider path，让首次运行不再依赖本地凭据是否齐全
 - 让 Python `AgentApp` facade 保持轻量，让嵌入式应用继续复用 CLI 同款 config-driven runtime，而不是形成第二套 orchestration surface
+- 让 browser 能力暂时保持 connector-ready：`browser-agent` 负责规划浏览器任务并暴露缺失 connector 需求，但在真正实现 browser connector 前，不宣称已经支持导航、截图、表单或下载执行
 
 参考：
 
 - <https://developers.openai.com/api/docs/guides/agents#choose-your-starting-point>
 - <https://developers.openai.com/api/docs/guides/agents/quickstart>
 - <https://developers.openai.com/api/docs/guides/agents/integrations-observability>
+
+## Operator Productivity Surfaces
+
+最新 CLI 层应该让常见工作可以直接执行，而不是要求用户先理解完整 YAML/runtime 结构：
+
+- 用 `connectors list`、`connectors doctor` 和 `connectors test <name>` 做 model、storage、search、MCP、workbench、federation 与 browser-facing surface 的静态就绪检查
+- browser 诊断需要明确当前边界：已经交付的是任务规划和 connector discovery；导航、截图、表单和下载仍需要 browser MCP server 或未来原生 connector
+- 用 `task list`、`task show` 和 `task run` 承载 repo review、bug fix、docs refresh、release check、data summary 与 federation loopback validation 等打包 workflow
+- 保持 `task run --dry-run` 对 prompt review 与审批前检查有用，避免任务直接进入 model-backed agent
+- 用 `report trend` 对比本地 benchmark、public-eval 与 real-network artifacts 的变化，而不是手工阅读多个 JSON 文件
+- `traces export --otel-json` 继续标记为 experimental；在 OpenTelemetry GenAI conventions 仍在演进时，本地 trace tree 仍是事实来源
+- 用 `skills catalog list/install` 和 `plugins doctor` 作为本地安装/就绪路径，再推进远程 marketplace 或 signed plugin distribution
+- 用 `integration federation-demo` 作为轻量 federation proof，再运行完整 real-network matrix
+- 持续维护 skill metadata 中的 risk、dependencies 与 smoke prompt，让 CLI 和文档可以说明哪些 skill 适合 mock-first 或 live-provider flow
 
 ## Web Search 补强
 

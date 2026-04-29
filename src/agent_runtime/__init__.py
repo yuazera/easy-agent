@@ -18,7 +18,11 @@ from agent_runtime.longrun import (
     run_longrun_suite,
 )
 from agent_runtime.public_eval import PublicEvalRecord, run_public_eval_suite
-from agent_runtime.real_network_eval import RealNetworkRecord, run_real_network_suite
+from agent_runtime.real_network_eval import (
+    RealNetworkRecord,
+    run_federation_demo_suite,
+    run_real_network_suite,
+)
 from agent_runtime.runtime import EasyAgentRuntime, build_runtime, build_runtime_from_config
 
 __all__ = [
@@ -38,6 +42,7 @@ __all__ = [
     'preflight_longrun_environment',
     'build_runtime_from_config',
     'run_default_suite',
+    'run_federation_demo_suite',
     'run_longrun_suite',
     'run_public_eval_suite',
     'run_real_network_suite',

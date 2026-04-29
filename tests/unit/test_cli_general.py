@@ -175,6 +175,8 @@ storage:
     open_path = tmp_path / 'trace-open.html'
     open_result = runner.invoke(app, ['traces', 'open', 'run_cli', '-c', str(config_path), '--output', str(open_path), '--no-browser'])
     invalid_html_result = runner.invoke(app, ['traces', 'export', 'run_cli', '-c', str(config_path), '--raw', '--html', '--output', str(html_path)])
+    otel_path = tmp_path / 'trace-otel.json'
+    otel_result = runner.invoke(app, ['traces', 'export', 'run_cli', '-c', str(config_path), '--otel-json', '--output', str(otel_path)])
 
     assert list_result.exit_code == 0
     assert 'run_cli' in list_result.output
@@ -193,6 +195,10 @@ storage:
     assert open_result.exit_code == 0
     assert open_path.exists()
     assert '"opened": false' in open_result.output
+    assert otel_result.exit_code == 0
+    assert otel_path.exists()
+    assert '"experimental": true' in otel_result.output
+    assert '"resource_spans"' in otel_path.read_text(encoding='utf-8')
     assert invalid_html_result.exit_code != 0
 
 
@@ -289,6 +295,31 @@ storage:
     assert 'easy-agent latest report' in html
     assert 'public_eval' in html
     assert 'run_report' in html
+
+
+def test_report_trend_summarizes_history(tmp_path: Path) -> None:
+    benchmark = tmp_path / 'benchmark-report.json'
+    benchmark.write_text(
+        json.dumps({'summary': {'single_agent': {'runs': 2, 'successes': 2, 'failures': 0}}}),
+        encoding='utf-8',
+    )
+    real_network = tmp_path / 'real-network-report.json'
+    real_network.write_text(
+        json.dumps({'summary': {'runs': 4, 'passed': 3, 'failed': 0, 'skipped': 1}}),
+        encoding='utf-8',
+    )
+    html_path = tmp_path / 'trend.html'
+
+    result = CliRunner().invoke(app, ['report', 'trend', '--history', str(tmp_path), '--format', 'json'])
+    html_result = CliRunner().invoke(app, ['report', 'trend', '--history', str(tmp_path), '--html', '--output', str(html_path)])
+
+    assert result.exit_code == 0
+    assert '"benchmark"' in result.output
+    assert '"score": 100.0' in result.output
+    assert '"score": 75.0' in result.output
+    assert html_result.exit_code == 0
+    assert html_path.exists()
+    assert 'easy-agent report trend' in html_path.read_text(encoding='utf-8')
 
 
 def test_runs_explain_reports_success(tmp_path: Path) -> None:

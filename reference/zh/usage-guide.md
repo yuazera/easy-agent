@@ -33,6 +33,11 @@ uv run easy-agent new research-agent <target-dir>
 uv run easy-agent new data-agent
 uv run easy-agent new ops-agent
 uv run easy-agent new browser-agent <target-dir>
+uv run easy-agent new customer-support-agent
+uv run easy-agent new sales-agent
+uv run easy-agent new document-agent
+uv run easy-agent new qa-agent
+uv run easy-agent new release-agent
 uv run easy-agent init --provider mock
 uv run easy-agent quickstart --provider mock
 uv run easy-agent template list
@@ -50,8 +55,20 @@ uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml
 uv run easy-agent traces export <run_id> -c easy-agent.yml --html --output trace.html
 uv run easy-agent traces open <run_id> -c easy-agent.yml --no-browser
+uv run easy-agent traces export <run_id> -c easy-agent.yml --otel-json --output trace-otel.json
 uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent report latest -c easy-agent.yml --html --output report.html
+uv run easy-agent report trend --history reports --html --output trend.html
+uv run easy-agent connectors list -c easy-agent.yml
+uv run easy-agent connectors doctor -c easy-agent.yml
+uv run easy-agent connectors test model -c easy-agent.yml
+uv run easy-agent task list
+uv run easy-agent task show repo-review
+uv run easy-agent task run repo-review -c easy-agent.yml --dry-run
+uv run easy-agent skills catalog list
+uv run easy-agent skills catalog install python_echo --target skills/installed --force
+uv run easy-agent plugins doctor -c easy-agent.yml
+uv run easy-agent integration federation-demo -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -82,6 +99,11 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `template create data-agent <target-dir>` 创建面向 CSV、JSON、日志、指标摘要与证据化建议的数据分析 starter。
 - `template create ops-agent <target-dir>` 创建面向 diagnostics、runbooks、incident notes 与 release checks 的运维 starter。
 - `template create browser-agent <target-dir>` 创建 mock-first 的浏览器任务规划 starter。它不会安装浏览器 runtime；只有在规划流和安全检查明确之后，再接入真实浏览器 connector。
+- `template create customer-support-agent <target-dir>` 创建面向 support triage 与回复草拟的 starter。
+- `template create sales-agent <target-dir>` 创建面向 sales qualification 与 follow-up 的 starter。
+- `template create document-agent <target-dir>` 创建面向文档摘要、抽取和 docs refresh 的 starter。
+- `template create qa-agent <target-dir>` 创建面向 QA planning 与 acceptance checks 的 starter。
+- `template create release-agent <target-dir>` 创建面向 release readiness 与 evidence review 的 starter。
 - `config explain` 会汇总 model/provider、entrypoint type、agents、tools、teams、harnesses、MCP、storage、executors、federation、eval settings 与 required environment variables，但不会打印 secret 值。
 - `config doctor` 做静态风险检查，不启动 model client，也不启动 MCP server。它会报告 Python baseline drift、缺失的 live env、缺失的本地工具、MCP roots/auth 缺口、federation auth 缺口、workbench executor readiness、human-loop 覆盖、storage 可移植性与 eval 凭据状态。
 - 生成的模板会带本地 README、最小 `.env.local.example` 与 mock-first smoke 命令路径。模板 smoke 从 `config doctor` 开始，再运行一个短任务，并为新 run id 导出 HTML trace。
@@ -98,6 +120,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `traces export <run_id>` 默认返回结构化 trace tree。
 - `traces export <run_id> --raw` 返回历史 raw trace payload。
 - `traces export <run_id> --html --output trace.html` 会为 structured tree 写出单文件 HTML trace viewer，包含 summary cards、status/error highlighting、span-kind filters、文本搜索与 raw JSON payload。
+- `traces export <run_id> --otel-json --output trace-otel.json` 会写出 experimental OpenTelemetry-style JSON mapping。在 GenAI semantic conventions 稳定前，仍以 native trace tree 作为事实来源。
 - `traces open <run_id>` 会写出同一个单文件 HTML viewer，并尝试用默认浏览器打开。无头终端、CI 或测试场景使用 `--no-browser`。
 
 ## 最新报告
@@ -113,7 +136,20 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 
 当终端表格太密时，可以使用 `report latest --html --output report.html`。导出的文件是独立 HTML，包含同一组 benchmark、public-eval、real-network、recent-run 与 raw JSON 证据。
 
+`report trend` 会比较某个目录下的本地 report artifacts，并展示 benchmark、public-eval、real-network 的 latest score、previous score 与 score delta。使用 `--html --output trend.html` 可以生成单文件趋势页。
+
 Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_id`、`parent_span_id`、`kind`、`status`、duration、input/output hash、retry count、checkpoint id 与 child spans。这样当前 JSON trace 仍然轻量，同时为后续 OpenTelemetry export 留出路径。
+
+## Connectors 与 Task Packs
+
+- `connectors list` 展示 model、storage、search、MCP、workbench、federation、browser readiness 等 connector surface。
+- `connectors doctor` 做静态 connector 检查，不启动高风险外部流程。
+- `connectors test <name>` 聚焦检查列表里的一个 connector。
+- `task list` 展示内置 task packs。
+- `task show <pack>` 输出 prompt template、recommended scenario 与 acceptance criteria。
+- `task run <pack>` 会把任务渲染后交给当前配置的 entrypoint。使用 `--dry-run` 可先检查 prompt。
+
+当前内置 task packs 包括 `repo-review`、`bug-fix`、`docs-refresh`、`release-check`、`data-summary` 与 `federation-loopback-demo`。
 
 ## Python Facade
 
@@ -125,6 +161,9 @@ from agent_runtime import AgentApp
 app = AgentApp.from_config("easy-agent.yml")
 try:
     result = app.run("Summarize this task")
+    task_result = app.run_task("repo-review", context="Focus on tests")
+    report = app.report()
+    trace = app.trace(str(result["run_id"]))
 finally:
     app.close()
 ```

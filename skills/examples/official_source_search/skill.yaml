@@ -2,6 +2,10 @@ name: official_source_search
 description: Search official or preferred sources and optionally fetch page contents.
 entry_type: python
 hook: hook.py:run
+risk: medium
+dependencies:
+  - SERPAPI_API_KEY for live search
+smoke_prompt: Search one preferred official source and summarize the result.
 input_schema:
   type: object
   properties:

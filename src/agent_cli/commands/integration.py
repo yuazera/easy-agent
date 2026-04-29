@@ -10,7 +10,7 @@ from rich.table import Table
 
 from agent_runtime.longrun import run_longrun_suite
 from agent_runtime.public_eval import run_public_eval_suite
-from agent_runtime.real_network_eval import run_real_network_suite
+from agent_runtime.real_network_eval import run_federation_demo_suite, run_real_network_suite
 
 console = Console()
 integration_app = typer.Typer(help='Run real integration and long-run validations.')
@@ -95,6 +95,30 @@ def run_real_network(
 ) -> None:
     report = run_real_network_suite(config)
     table = Table(title='easy-agent real-network')
+    table.add_column('Scenario', style='cyan')
+    table.add_column('Status', style='green')
+    table.add_column('Seconds', style='yellow')
+    table.add_column('Pass Criteria', style='blue')
+    for record in report['records']:
+        proof = record.get('proof', {})
+        table.add_row(
+            str(record['scenario']),
+            str(record['status']),
+            str(record['duration_seconds']),
+            str(proof.get('pass_criteria') or ''),
+        )
+    console.print(table)
+    console.print_json(json.dumps({'summary': report['summary'], 'generated_at': report['generated_at']}, ensure_ascii=False))
+    if report['summary']['failed']:
+        raise typer.Exit(code=1)
+
+
+@integration_app.command('federation-demo')
+def run_federation_demo(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+) -> None:
+    report = run_federation_demo_suite(config)
+    table = Table(title='easy-agent federation demo')
     table.add_column('Scenario', style='cyan')
     table.add_column('Status', style='green')
     table.add_column('Seconds', style='yellow')

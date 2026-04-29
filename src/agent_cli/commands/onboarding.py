@@ -419,6 +419,71 @@ def _templates() -> dict[str, dict[str, Any]]:
                 _browser_agent_template_config(),
             ),
         },
+        'customer-support-agent': {
+            'description': 'Business-ready support assistant for tickets, replies, and escalation summaries.',
+            'files': _template_files(
+                'customer-support-agent',
+                'A practical starter for customer support triage and response drafting.',
+                _business_agent_template_config(
+                    graph_name='customer_support_agent',
+                    agent_name='support_specialist',
+                    description='Customer support assistant for tickets, replies, and escalation summaries.',
+                    prompt='For real support work, identify customer intent, missing information, policy boundaries, and escalation needs before drafting a reply.',
+                ),
+            ),
+        },
+        'sales-agent': {
+            'description': 'Business-ready sales assistant for qualification, follow-up, and account notes.',
+            'files': _template_files(
+                'sales-agent',
+                'A practical starter for sales qualification and follow-up workflows.',
+                _business_agent_template_config(
+                    graph_name='sales_agent',
+                    agent_name='sales_specialist',
+                    description='Sales assistant for qualification, follow-up, and account notes.',
+                    prompt='For real sales work, qualify the account, identify next actions, and keep claims grounded in supplied context.',
+                ),
+            ),
+        },
+        'document-agent': {
+            'description': 'Business-ready document assistant for summaries, extraction, and doc refreshes.',
+            'files': _template_files(
+                'document-agent',
+                'A practical starter for document summarization, extraction, and documentation refreshes.',
+                _business_agent_template_config(
+                    graph_name='document_agent',
+                    agent_name='document_specialist',
+                    description='Document assistant for summaries, extraction, and doc refreshes.',
+                    prompt='For real document work, preserve source meaning, call out uncertainty, and produce structured summaries or edits.',
+                ),
+            ),
+        },
+        'qa-agent': {
+            'description': 'Business-ready QA assistant for test planning, regression notes, and acceptance checks.',
+            'files': _template_files(
+                'qa-agent',
+                'A practical starter for QA planning and regression verification.',
+                _business_agent_template_config(
+                    graph_name='qa_agent',
+                    agent_name='qa_specialist',
+                    description='QA assistant for test planning, regression notes, and acceptance checks.',
+                    prompt='For real QA work, derive acceptance criteria, list regression risks, and map each risk to a test or check.',
+                ),
+            ),
+        },
+        'release-agent': {
+            'description': 'Business-ready release assistant for changelog, verification, and release risk checks.',
+            'files': _template_files(
+                'release-agent',
+                'A practical starter for release readiness and evidence review.',
+                _business_agent_template_config(
+                    graph_name='release_agent',
+                    agent_name='release_specialist',
+                    description='Release assistant for changelog, verification, and release risk checks.',
+                    prompt='For real release work, verify test evidence, changelog state, documentation drift, and remaining blockers.',
+                ),
+            ),
+        },
     }
 
 
@@ -461,7 +526,19 @@ def _template_env_example(name: str) -> str:
         lines.append('SERPAPI_API_KEY=<SECRET>')
     elif name == 'federation-loopback':
         lines.append('EASY_AGENT_FEDERATION_TOKEN=<SECRET>')
-    elif name in {'mcp-filesystem-agent', 'workbench-coding-agent', 'coding-agent', 'data-agent', 'ops-agent', 'browser-agent'}:
+    elif name in {
+        'mcp-filesystem-agent',
+        'workbench-coding-agent',
+        'coding-agent',
+        'data-agent',
+        'ops-agent',
+        'browser-agent',
+        'customer-support-agent',
+        'sales-agent',
+        'document-agent',
+        'qa-agent',
+        'release-agent',
+    }:
         lines.append('# No credentials are required for the mock-backed smoke path.')
     elif name == 'research-agent':
         lines.append('# No credentials are required for the mock-backed smoke path.')
@@ -737,6 +814,51 @@ def _browser_agent_template_config() -> str:
               system_prompt: |
                 You are a browser-task planning assistant. For mock smoke runs, call python_echo once.
                 For real browser work, produce a clear navigation plan, expected evidence, and safety checks before connector execution.
+              tools:
+                - python_echo
+              max_iterations: 4
+          nodes: []
+
+        skills:
+          - path: skills/examples
+
+        storage:
+          path: .easy-agent
+          database: state.db
+
+        security:
+          sandbox:
+            mode: auto
+            working_root: .
+        """
+    ).lstrip()
+
+
+def _business_agent_template_config(
+    *,
+    graph_name: str,
+    agent_name: str,
+    description: str,
+    prompt: str,
+) -> str:
+    return dedent(
+        f"""
+        model:
+          provider: mock
+          protocol: mock
+          model: mock-agent
+          base_url: mock://local
+          api_key_env: EASY_AGENT_MOCK_API_KEY
+
+        graph:
+          name: {graph_name}
+          entrypoint: {agent_name}
+          agents:
+            - name: {agent_name}
+              description: {description}
+              system_prompt: |
+                You are a careful business workflow assistant. For mock smoke runs, call python_echo once.
+                {prompt}
               tools:
                 - python_echo
               max_iterations: 4

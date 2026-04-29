@@ -2,6 +2,9 @@ name: html_page_builder
 description: Create a standalone HTML page artifact from structured content.
 entry_type: python
 hook: hook.py:run
+risk: medium
+dependencies: []
+smoke_prompt: Build a small local HTML artifact.
 input_schema:
   type: object
   properties:

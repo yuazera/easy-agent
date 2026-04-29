@@ -26,12 +26,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added `easy-agent traces open <run_id>` for one-command local HTML trace inspection.
 - Added `easy-agent report latest` to summarize local benchmark, public-eval, real-network, and recent-run evidence.
 - Added standalone HTML latest-report export through `easy-agent report latest --html --output <path>`.
+- Added `easy-agent report trend` with JSON, pretty, and standalone HTML outputs for comparing local benchmark, public-eval, and real-network report artifacts over time.
+- Added experimental OpenTelemetry-style trace export through `easy-agent traces export <run_id> --otel-json --output <path>`.
+- Added connector diagnostics and built-in task-pack surfaces:
+  - `easy-agent connectors list|doctor|test`
+  - `easy-agent task list|show|run`
+- Added local skill and plugin operator surfaces:
+  - `easy-agent skills catalog list|install`
+  - `easy-agent plugins doctor`
+- Added `easy-agent integration federation-demo` as a focused federation loopback proof before the full real-network matrix.
 - Added business-oriented starter scenarios for:
   - `coding-agent`
   - `research-agent`
   - `data-agent`
   - `ops-agent`
   - `browser-agent`
+  - `customer-support-agent`
+  - `sales-agent`
+  - `document-agent`
+  - `qa-agent`
+  - `release-agent`
 - Added a lightweight Python `AgentApp` facade over `EasyAgentRuntime` for config-driven embedding.
 - Added setup preflight and config-doctor risk checks for Python baseline drift, local tool availability, required environment variables, MCP roots/auth, federation auth, workbench executors, storage portability, human-loop coverage, and eval readiness.
 - Added scenario starter templates for MCP filesystem, public-eval smoke, federation loopback, workbench-backed coding tasks, coding tasks, and source-first research tasks.
@@ -55,9 +69,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - official-source search query shaping and source-policy ordering
   - local simple-evals dataset loading
   - simple-evals profile reporting
+  - connector diagnostics, task-pack execution, local skill catalog install, plugin readiness checks, report trend output, and experimental OTel trace export
 
 ### Changed
 
+- Moved report summarization and standalone report HTML helpers into `agent_runtime.reports` so the CLI reuses runtime-level report logic instead of carrying duplicate helper implementations.
+- Extended the Python `AgentApp` facade with task execution, streaming, latest-report, and trace-loading helpers while keeping it backed by the same config-driven runtime contracts.
+- Extended skill metadata for bundled example and real skills with risk, dependency, and smoke-prompt fields.
 - Extended real-network reporting so scenario proof and safety assertions sit beside performance telemetry instead of relying only on headline score rows.
 - Hardened the real-network disconnect/retry scenario against transient Windows socket-buffer exhaustion while avoiding unawaited coroutine cleanup warnings on retry setup.
 - Updated onboarding docs so the first smoke path uses `setup --provider mock`, config explanation, config risk checks, and searchable HTML trace export before live-provider validation.
@@ -92,9 +110,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_mock_provider.py tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_config.py -q` with `36 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_readme_snapshot.py -q` with `17 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_runtime_facade.py tests/unit/test_readme_snapshot.py -q` with `18 passed`
-- `.\.venv\Scripts\python.exe -m pytest tests/unit -q --basetemp=%TEMP%\easy-agent-pytest\unit-full-<timestamp>` with `217 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_cli_productivity.py tests/unit/test_runtime_facade.py tests/unit/test_readme_snapshot.py -q` with `23 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests/unit -q --basetemp=%TEMP%\easy-agent-pytest\unit-full-<timestamp>` with `222 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/integration/test_real_network_eval.py -m real -q --basetemp=%TEMP%\easy-agent-pytest\real-network-<timestamp>` with `1 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/integration -m real -q --basetemp=%TEMP%\easy-agent-pytest\integration-full-<timestamp>` with `7 passed`, `2 warnings`
+- CLI smoke passed for connector diagnostics, browser connector readiness warning, task-pack inspection, report trend, local skill catalog listing, and `new customer-support-agent`.
 
 ## [0.3.5] - 2026-04-14
 

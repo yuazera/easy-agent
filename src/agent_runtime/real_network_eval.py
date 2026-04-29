@@ -1299,9 +1299,42 @@ def run_real_network_suite(config_path: str | Path = 'easy-agent.yml') -> dict[s
     return report
 
 
+def run_federation_demo_suite(config_path: str | Path = 'easy-agent.yml') -> dict[str, Any]:
+    base_config = load_config(config_path)
+    output_root = Path('.easy-agent')
+    output_root.mkdir(parents=True, exist_ok=True)
+    tmp_root = output_root / 'federation-demo-tmp' / str(int(time.time() * 1000))
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    try:
+        records = [
+            _record('cross_process_federation', 'http_poll', 'python subprocess', _scenario_cross_process_federation),
+            _record('live_model_federation_roundtrip', 'http_poll', f"{base_config.model.provider} live model", lambda: _scenario_live_model_federation_roundtrip(base_config, tmp_root / 'live-model'), live_model=True),
+            _record('disconnect_retry_chaos', 'http_webhook', 'loopback callback server', lambda: _scenario_federation_retry_and_reconnect(tmp_root / 'federation')),
+            _record('duplicate_delivery_replay_resilience', 'http_webhook', 'loopback callback server', lambda: _scenario_duplicate_delivery_replay_resilience(tmp_root / 'federation-replay')),
+        ]
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+    summary = {
+        'runs': len(records),
+        'passed': sum(1 for item in records if item.status == 'passed'),
+        'failed': sum(1 for item in records if item.status == 'failed'),
+        'skipped': sum(1 for item in records if item.status == 'skipped'),
+    }
+    generated_at = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    report = {
+        'records': [asdict(item) for item in records],
+        'summary': summary,
+        'telemetry_summary': _aggregate_telemetry_summary(records),
+        'generated_at': generated_at,
+    }
+    (output_root / 'federation-demo-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    return report
+
+
 __all__ = [
     'RealNetworkRecord',
     '_budget_status',
     '_snapshot_drift',
+    'run_federation_demo_suite',
     'run_real_network_suite',
 ]

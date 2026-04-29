@@ -37,3 +37,42 @@ storage:
 
     assert result['status'] == 'succeeded'
     assert 'hello from facade' in str(result['result'])
+
+
+def test_agent_app_runs_task_and_loads_trace(tmp_path: Path) -> None:
+    config_path = tmp_path / 'easy-agent.yml'
+    storage_path = str(tmp_path / 'state').replace('\\', '/')
+    config_path.write_text(
+        f"""
+model:
+  provider: mock
+  protocol: mock
+  model: mock-agent
+  base_url: mock://local
+  api_key_env: EASY_AGENT_MOCK_API_KEY
+graph:
+  entrypoint: assistant
+  agents:
+    - name: assistant
+      system_prompt: Use python_echo once.
+      tools:
+        - python_echo
+      max_iterations: 3
+skills:
+  - path: skills/examples
+storage:
+  path: {storage_path}
+  database: state.db
+""",
+        encoding='utf-8',
+    )
+
+    app = AgentApp.from_config(config_path)
+    try:
+        result = app.run_task('repo-review', context='focus facade tests')
+        trace = app.trace(str(result['run_id']))
+    finally:
+        app.close()
+
+    assert result['status'] == 'succeeded'
+    assert trace['run']['run_id'] == result['run_id']

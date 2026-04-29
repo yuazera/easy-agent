@@ -1,6 +1,10 @@
 name: command_echo
 description: Echo the prompt through a local command.
 entry_type: command
+risk: medium
+dependencies:
+  - cmd on Windows
+smoke_prompt: Echo this smoke prompt through a command.
 command:
   - cmd
   - /c
