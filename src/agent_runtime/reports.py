@@ -131,6 +131,109 @@ def latest_report_payload(
     }
 
 
+def build_cost_report(config: Path, *, run_limit: int = 100) -> dict[str, Any]:
+    if not config.is_file():
+        return {'status': 'missing_config', 'config': str(config), 'runs': [], 'summary': {}}
+    try:
+        runtime = build_runtime(config)
+    except Exception as exc:
+        return {'status': 'unavailable', 'config': str(config), 'error': str(exc), 'runs': [], 'summary': {}}
+    try:
+        runs = runtime.store.list_runs(limit=run_limit)
+        rows: list[dict[str, Any]] = []
+        totals = {
+            'runs': len(runs),
+            'failed': 0,
+            'tool_spans': 0,
+            'mcp_spans': 0,
+            'model_spans': 0,
+            'retry_count': 0,
+            'duration_seconds': 0.0,
+        }
+        failure_layers: dict[str, int] = {}
+        for run in runs:
+            run_id = str(run['run_id'])
+            tree = runtime.store.load_trace_tree(run_id)
+            span_items = tree.get('spans')
+            spans: list[Any] = span_items if isinstance(span_items, list) else []
+            kinds: dict[str, int] = {}
+            duration = 0.0
+            retry_count = 0
+            for raw_span in spans:
+                span = raw_span if isinstance(raw_span, dict) else {}
+                kind = str(span.get('kind') or 'unknown')
+                kinds[kind] = kinds.get(kind, 0) + 1
+                retry_count += int(span.get('retry_count') or 0)
+                raw_duration = span.get('duration_seconds')
+                if isinstance(raw_duration, int | float):
+                    duration += float(raw_duration)
+            status = str(run.get('status') or 'unknown')
+            if status == 'failed':
+                totals['failed'] += 1
+                layer = _cost_failure_layer(spans)
+                failure_layers[layer] = failure_layers.get(layer, 0) + 1
+            totals['tool_spans'] += kinds.get('tool', 0)
+            totals['mcp_spans'] += kinds.get('mcp', 0)
+            totals['model_spans'] += kinds.get('model', 0)
+            totals['retry_count'] += retry_count
+            totals['duration_seconds'] = round(float(totals['duration_seconds']) + duration, 4)
+            rows.append(
+                {
+                    'run_id': run_id,
+                    'status': status,
+                    'run_kind': run.get('run_kind'),
+                    'span_count': len(spans),
+                    'kinds': kinds,
+                    'retry_count': retry_count,
+                    'duration_seconds': round(duration, 4),
+                    'estimated_cost_usd': None,
+                    'cost_note': 'token usage is not available in stored traces; cost is best-effort telemetry only',
+                }
+            )
+        return {
+            'status': 'available',
+            'config': str(config),
+            'summary': {**totals, 'failure_layers': failure_layers},
+            'runs': rows,
+        }
+    finally:
+        import asyncio
+
+        asyncio.run(runtime.aclose())
+
+
+def cost_report_html(payload: dict[str, Any]) -> str:
+    raw_runs = payload.get('runs')
+    runs: list[Any] = raw_runs if isinstance(raw_runs, list) else []
+    cards = []
+    summary = payload.get('summary') if isinstance(payload.get('summary'), dict) else {}
+    cards.append(
+        '<section class="card">'
+        '<h2>summary</h2>'
+        f'<pre>{escape(json.dumps(summary, ensure_ascii=False, indent=2, default=str))}</pre>'
+        '</section>'
+    )
+    for item_raw in runs[:12]:
+        item = cast(dict[str, Any], item_raw) if isinstance(item_raw, dict) else {}
+        cards.append(
+            '<section class="card">'
+            f'<h2>{escape(str(item.get("run_id") or "-"))}</h2>'
+            f'<div class="status">{escape(str(item.get("status") or "unknown"))}</div>'
+            f'<p>spans={escape(str(item.get("span_count") or 0))}, retries={escape(str(item.get("retry_count") or 0))}, seconds={escape(str(item.get("duration_seconds") or 0))}</p>'
+            f'<pre>{escape(json.dumps(item, ensure_ascii=False, indent=2, default=str))}</pre>'
+            '</section>'
+        )
+    return _report_shell('easy-agent cost and reliability report', 'Best-effort local run telemetry for cost, retries, tool use, and failure classes.', ''.join(cards), payload)
+
+
+def _cost_failure_layer(spans: list[Any]) -> str:
+    for raw_span in spans:
+        span = raw_span if isinstance(raw_span, dict) else {}
+        if str(span.get('status') or '') == 'failed':
+            return str(span.get('kind') or 'unknown')
+    return 'unknown'
+
+
 def latest_report_html(payload: dict[str, Any]) -> str:
     reports_raw = payload.get('reports')
     reports = cast(dict[str, Any], reports_raw) if isinstance(reports_raw, dict) else {}

@@ -121,16 +121,27 @@ bundle_on_completion: false
     app = AgentApp.from_config(config_path)
     try:
         plan = app.workflow_plan(workflow_path)
+        doctor = app.workflow_doctor(workflow_path)
         result = app.run_workflow(workflow_path)
+        note = app.add_note(str(result['run_id']), 'facade note', author='unit')
+        inspection = app.inspect(str(result['run_id']))
         browser = app.browser_audit('https://example.com', kind='seo')
         bundle = app.run_bundle(str(result['run_id']), output_dir=tmp_path / 'bundle', force=True)
+        dashboard = app.dashboard(tmp_path / 'dashboard.html')
+        costs = app.costs()
     finally:
         app.close()
 
     assert plan['pack'] == 'repo-review'
+    assert doctor['status'] in {'ok', 'warn'}
     assert 'focus facade workflow' in str(plan['prompt'])
     assert result['status'] == 'succeeded'
+    assert note['note'] == 'facade note'
+    assert inspection['notes'][0]['note'] == 'facade note'
     assert browser['pack'] == 'browser-audit'
     assert 'SEO fixes' in str(browser['prompt'])
     assert bundle['mode'] == 'advice_only'
     assert (tmp_path / 'bundle' / 'README.md').exists()
+    assert dashboard['run_count'] >= 1
+    assert (tmp_path / 'dashboard.html').exists()
+    assert costs['status'] == 'available'

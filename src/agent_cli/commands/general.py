@@ -6,6 +6,7 @@ import platform
 import sys
 import webbrowser
 from html import escape
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +30,9 @@ from agent_runtime.diagnostics import (
     fix_package_markdown,
 )
 from agent_runtime.reports import (
+    build_cost_report,
     build_report_trend,
+    cost_report_html,
     latest_report_html,
     latest_report_payload,
     report_trend_html,
@@ -38,8 +41,10 @@ from agent_runtime.trace_export import trace_tree_to_otel_json
 
 console = Console()
 runs_app = typer.Typer(help='Inspect durable run records.')
+run_notes_app = typer.Typer(help='Add and list local notes for a run.')
 traces_app = typer.Typer(help='Export structured run traces.')
 report_app = typer.Typer(help='Summarize local verification and run reports.')
+runs_app.add_typer(run_notes_app, name='notes')
 
 
 
@@ -91,9 +96,11 @@ def _build_run_inspection(runtime: EasyAgentRuntime, run_id: str, config: str) -
         next_commands.insert(2, 'easy-agent browser artifacts -c easy-agent.yml')
     raw_notes = fix.get('safety_notes')
     notes: list[Any] = raw_notes if isinstance(raw_notes, list) else []
+    diagnostic_code = _diagnostic_code(explanation, triage)
     return {
         'run_id': run_id,
         'mode': 'advice_only',
+        'diagnostic_code': diagnostic_code,
         'summary': summary,
         'explanation': explanation,
         'triage': triage,
@@ -109,13 +116,53 @@ def _build_run_inspection(runtime: EasyAgentRuntime, run_id: str, config: str) -
             'kinds': kinds,
             'run': trace_tree.get('run', {}),
         },
+        'cost_summary': _run_cost_summary(spans),
         'browser': {
             'doctor': browser_doctor(config),
             'artifacts': browser_artifacts(config, limit=20),
         },
+        'notes': runtime.store.list_run_notes(run_id),
+        'repair_prompt': _repair_prompt(run_id, selected_pack, explanation, triage),
         'bundle_command': bundle_command,
         'next_commands': next_commands,
     }
+
+
+def _diagnostic_code(explanation: dict[str, Any], triage: dict[str, Any]) -> str:
+    layer = str(explanation.get('likely_layer') or triage.get('likely_layer') or 'unknown')
+    severity = str(triage.get('severity') or 'unknown')
+    actionability = str(triage.get('actionability') or 'unknown')
+    return f'{layer}.{severity}.{actionability}'.replace(' ', '_').lower()
+
+
+def _run_cost_summary(spans: list[Any]) -> dict[str, Any]:
+    kinds: dict[str, int] = {}
+    retry_count = 0
+    duration = 0.0
+    for raw_span in spans:
+        span = raw_span if isinstance(raw_span, dict) else {}
+        kind = str(span.get('kind') or 'unknown')
+        kinds[kind] = kinds.get(kind, 0) + 1
+        retry_count += int(span.get('retry_count') or 0)
+        raw_duration = span.get('duration_seconds')
+        if isinstance(raw_duration, int | float):
+            duration += float(raw_duration)
+    return {
+        'estimated_cost_usd': None,
+        'cost_note': 'token usage is not available in stored traces; this is best-effort run telemetry',
+        'duration_seconds': round(duration, 4),
+        'retry_count': retry_count,
+        'spans_by_kind': kinds,
+    }
+
+
+def _repair_prompt(run_id: str, task_pack: str, explanation: dict[str, Any], triage: dict[str, Any]) -> str:
+    return (
+        f'Use easy-agent task pack {task_pack} to repair run {run_id}. '
+        f"Likely layer: {explanation.get('likely_layer', 'unknown')}. "
+        f"Probable cause: {triage.get('probable_cause', 'unknown')}. "
+        'Keep the work scoped, inspect traces first, add focused tests, and do not bypass approvals.'
+    )
 
 
 
@@ -357,7 +404,8 @@ def triage_run_command(
 def inspect_run_command(
     run_id: str = typer.Argument(..., help='Existing run id.'),
     config: str = typer.Option('easy-agent.yml', '-c', '--config'),
-    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty, json, markdown, or html.'),
+    output: str | None = typer.Option(None, '-o', '--output', help='Optional output file for markdown or html.'),
     bundle: bool = typer.Option(False, '--bundle/--no-bundle', help='Also write an advice-only run bundle.'),
     bundle_output: str | None = typer.Option(None, '--bundle-output', help='Output directory for --bundle.'),
     force: bool = typer.Option(False, '--force', help='Allow writing into a non-empty bundle directory.'),
@@ -379,16 +427,37 @@ def inspect_run_command(
     if output_format == 'json':
         console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
         return
+    if output_format == 'markdown':
+        content = _run_inspection_markdown(payload)
+        if output:
+            output_path = Path(output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(content, encoding='utf-8')
+            console.print_json(json.dumps({'run_id': run_id, 'output': str(output_path)}, ensure_ascii=False))
+        else:
+            console.print(content)
+        return
+    if output_format == 'html':
+        if output is None:
+            raise typer.BadParameter('--format html requires --output <path>.')
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(_run_inspection_html(payload), encoding='utf-8')
+        console.print_json(json.dumps({'run_id': run_id, 'output': str(output_path)}, ensure_ascii=False))
+        return
     if output_format != 'pretty':
-        raise typer.BadParameter('format must be pretty or json')
+        raise typer.BadParameter('format must be pretty, json, markdown, or html')
     table = Table(title=f'run inspection: {run_id}')
     table.add_column('Field', style='cyan')
     table.add_column('Value', style='green')
     table.add_row('Status', str(payload['summary'].get('status') or '-'))
+    table.add_row('Diagnostic Code', str(payload.get('diagnostic_code') or '-'))
     table.add_row('Likely Layer', str(payload['explanation'].get('likely_layer') or '-'))
     table.add_row('Severity', str(payload['triage'].get('severity') or '-'))
     table.add_row('Task Pack', str(payload['fix_summary'].get('selected_task_pack') or '-'))
     table.add_row('Trace', json.dumps(payload['trace'], ensure_ascii=False))
+    table.add_row('Cost Summary', json.dumps(payload['cost_summary'], ensure_ascii=False))
+    table.add_row('Notes', str(len(payload.get('notes', []))))
     table.add_row('Browser Enabled', str(payload['browser']['doctor'].get('enabled')))
     table.add_row('Browser Artifacts', str(payload['browser']['artifacts'].get('count') or 0))
     table.add_row('Bundle Command', str(payload['bundle_command']))
@@ -437,6 +506,122 @@ def bundle_run_command(
     table.add_row('Files', '\n'.join(str(item) for item in bundle['files']))
     table.add_row('Copied Browser Artifacts', str(len(bundle.get('copied_browser_artifacts', []))))
     console.print(table)
+
+
+@run_notes_app.command('add')
+def add_run_note_command(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    note: str = typer.Argument(..., help='Note text to add.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    author: str | None = typer.Option(None, '--author', help='Optional note author.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = runtime.store.add_run_note(run_id, note, author=author)
+    finally:
+        asyncio.run(runtime.aclose())
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f'run notes: {run_id}')
+    table.add_column('ID', style='cyan')
+    table.add_column('Author', style='green')
+    table.add_column('Note')
+    table.add_column('Created')
+    table.add_row(str(payload.get('note_id') or '-'), str(payload.get('author') or '-'), str(payload.get('note') or '-'), str(payload.get('created_at') or '-'))
+    console.print(table)
+
+
+@run_notes_app.command('list')
+def list_run_notes_command(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = {'run_id': run_id, 'notes': runtime.store.list_run_notes(run_id)}
+    finally:
+        asyncio.run(runtime.aclose())
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f'run notes: {run_id}')
+    table.add_column('ID', style='cyan')
+    table.add_column('Author', style='green')
+    table.add_column('Note')
+    table.add_column('Created')
+    raw_notes = payload.get('notes')
+    notes: list[Any] = raw_notes if isinstance(raw_notes, list) else []
+    for item_raw in notes:
+        item = item_raw if isinstance(item_raw, dict) else {}
+        table.add_row(str(item.get('note_id') or '-'), str(item.get('author') or '-'), str(item.get('note') or '-'), str(item.get('created_at') or '-'))
+    console.print(table)
+
+
+def _run_inspection_markdown(payload: dict[str, Any]) -> str:
+    run_id = str(payload.get('run_id') or '-')
+    raw_summary = payload.get('summary')
+    summary: dict[str, Any] = raw_summary if isinstance(raw_summary, dict) else {}
+    raw_explanation = payload.get('explanation')
+    explanation: dict[str, Any] = raw_explanation if isinstance(raw_explanation, dict) else {}
+    raw_triage = payload.get('triage')
+    triage: dict[str, Any] = raw_triage if isinstance(raw_triage, dict) else {}
+    raw_fix_summary = payload.get('fix_summary')
+    fix_summary: dict[str, Any] = raw_fix_summary if isinstance(raw_fix_summary, dict) else {}
+    raw_next_commands = payload.get('next_commands')
+    next_commands: list[Any] = raw_next_commands if isinstance(raw_next_commands, list) else []
+    raw_notes = payload.get('notes')
+    notes: list[Any] = raw_notes if isinstance(raw_notes, list) else []
+    command_block = '\n'.join(f'- `{item}`' for item in next_commands)
+    note_block = '\n'.join(f"- {item.get('note')}" for item in notes if isinstance(item, dict)) or '- No notes recorded.'
+    return (
+        f'# easy-agent run inspection: {run_id}\n\n'
+        f'- Status: `{summary.get("status", "-")}`\n'
+        f'- Diagnostic code: `{payload.get("diagnostic_code", "-")}`\n'
+        f'- Likely layer: `{explanation.get("likely_layer", "-")}`\n'
+        f'- Severity: `{triage.get("severity", "-")}`\n'
+        f'- Selected task pack: `{fix_summary.get("selected_task_pack", "-")}`\n\n'
+        f'## Repair Prompt\n\n{payload.get("repair_prompt", "-")}\n\n'
+        f'## Cost Summary\n\n```json\n{json.dumps(payload.get("cost_summary", {}), ensure_ascii=False, indent=2, default=str)}\n```\n\n'
+        f'## Notes\n\n{note_block}\n\n'
+        f'## Next Commands\n\n{command_block}\n'
+    )
+
+
+def _run_inspection_html(payload: dict[str, Any]) -> str:
+    run_id = str(payload.get('run_id') or '-')
+    markdown = _run_inspection_markdown(payload)
+    raw_json = escape(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>easy-agent run inspection {escape(run_id)}</title>
+  <style>
+    :root {{ color-scheme: light dark; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    body {{ margin: 0; background: #f6f7f9; color: #1f2937; }}
+    main {{ width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 48px; }}
+    .card {{ background: #fff; border: 1px solid #d8dee7; border-radius: 8px; padding: 18px; margin: 14px 0; }}
+    pre {{ overflow: auto; padding: 12px; border-radius: 8px; background: #111827; color: #e5e7eb; }}
+    @media (prefers-color-scheme: dark) {{ body {{ background: #101419; color: #e7ecf3; }} .card {{ background: #171d25; border-color: #2a3340; }} }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>easy-agent run inspection</h1>
+    <section class="card"><pre>{escape(markdown)}</pre></section>
+    <section class="card"><h2>Raw JSON</h2><pre>{raw_json}</pre></section>
+  </main>
+</body>
+</html>
+"""
 
 
 @traces_app.command('export')
@@ -589,6 +774,38 @@ def trend_report(
     console.print(table)
 
 
+@report_app.command('costs')
+def costs_report(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    run_limit: int = typer.Option(100, '--run-limit', min=1, max=500),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+    html: bool = typer.Option(False, '--html', help='Write the cost report as a standalone HTML file.'),
+    output: str | None = typer.Option(None, '-o', '--output', help='Output file for --html exports.'),
+) -> None:
+    payload = build_cost_report(Path(config), run_limit=run_limit)
+    if html:
+        if output is None:
+            raise typer.BadParameter('--html requires --output <path>.')
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(cost_report_html(payload), encoding='utf-8')
+        console.print_json(json.dumps({'output': str(output_path), 'summary': payload.get('summary', {})}, ensure_ascii=False))
+        return
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title='easy-agent cost and reliability report')
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    raw_summary = payload.get('summary')
+    summary: dict[str, Any] = raw_summary if isinstance(raw_summary, dict) else {}
+    for key, value in summary.items():
+        table.add_row(str(key), json.dumps(value, ensure_ascii=False, default=str) if isinstance(value, dict) else str(value))
+    console.print(table)
+
+
 def register(app: typer.Typer) -> None:
     @app.command('dashboard')
     def dashboard(
@@ -624,6 +841,46 @@ def register(app: typer.Typer) -> None:
         for key, value in response.items():
             table.add_row(key, json.dumps(value, ensure_ascii=False) if isinstance(value, dict) else str(value))
         console.print(table)
+
+    @app.command('console')
+    def local_console(
+        config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+        history: str = typer.Option('.easy-agent', '--history', help='Directory containing local report JSON artifacts.'),
+        host: str = typer.Option('127.0.0.1', '--host'),
+        port: int = typer.Option(8765, '--port', min=1, max=65535),
+        dry_run: bool = typer.Option(False, '--dry-run', help='Print the console endpoint without starting a server.'),
+    ) -> None:
+        payload = dashboard_payload(Path(config), history=Path(history))
+        html = dashboard_html(payload)
+        url = f'http://{host}:{port}/'
+        if dry_run:
+            console.print_json(json.dumps({'url': url, 'mode': 'read_only', 'run_count': len(payload['runs'])}, ensure_ascii=False))
+            return
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path not in {'/', '/index.html'}:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                body = html.encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                return
+
+        server = ThreadingHTTPServer((host, port), Handler)
+        console.print_json(json.dumps({'url': url, 'mode': 'read_only'}, ensure_ascii=False))
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.server_close()
 
     @app.command()
     def doctor(

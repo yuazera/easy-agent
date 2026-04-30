@@ -28,7 +28,7 @@ def test_template_commands_list_and_create(tmp_path: Path) -> None:
     runner = CliRunner()
     destination = tmp_path / 'starter'
 
-    listed = runner.invoke(app, ['template', 'list'])
+    listed = runner.invoke(app, ['template', 'list', '--format', 'json'])
     created = runner.invoke(app, ['template', 'create', 'basic-agent', str(destination)])
 
     assert listed.exit_code == 0
@@ -52,6 +52,21 @@ def test_template_commands_list_and_create(tmp_path: Path) -> None:
     assert 'github-issue-agent' in listed.output
     assert 'website-audit-agent' in listed.output
     assert 'daily-report-agent' in listed.output
+    assert 'api-regression-agent' in listed.output
+    assert 'website-release-check-agent' in listed.output
+    assert 'incident-review-agent' in listed.output
+    assert 'weekly-report-agent' in listed.output
+    assert 'github-pr-review-agent' in listed.output
+    assert 'data-quality-agent' in listed.output
+    shown = runner.invoke(app, ['template', 'show', 'website-release-check-agent', '--format', 'json'])
+    recommended = runner.invoke(app, ['template', 'recommend', '--goal', 'website seo release browser audit', '--format', 'json'])
+    filtered = runner.invoke(app, ['template', 'list', '--tag', 'browser', '--format', 'json'])
+    assert shown.exit_code == 0
+    assert '"recommended_workflow": "browser-audit"' in shown.output
+    assert recommended.exit_code == 0
+    assert 'website-release-check-agent' in recommended.output
+    assert filtered.exit_code == 0
+    assert 'website-audit-agent' in filtered.output
     assert created.exit_code == 0
     assert (destination / 'easy-agent.yml').exists()
     assert (destination / 'workflow.yml').exists()
@@ -90,9 +105,15 @@ def test_all_templates_create_valid_configs(tmp_path: Path) -> None:
         'github-issue-agent',
         'website-audit-agent',
         'daily-report-agent',
+        'api-regression-agent',
+        'website-release-check-agent',
+        'incident-review-agent',
+        'weekly-report-agent',
+        'github-pr-review-agent',
+        'data-quality-agent',
     ]
 
-    listed = runner.invoke(app, ['template', 'list'])
+    listed = runner.invoke(app, ['template', 'list', '--format', 'json'])
 
     assert listed.exit_code == 0
     for template in templates:
@@ -139,6 +160,12 @@ def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: Mon
     github_issue = runner.invoke(app, ['new', 'github-issue-agent'])
     website_audit = runner.invoke(app, ['new', 'website-audit-agent'])
     daily_report = runner.invoke(app, ['new', 'daily-report-agent'])
+    api_regression = runner.invoke(app, ['new', 'api-regression-agent'])
+    website_release = runner.invoke(app, ['new', 'website-release-check-agent'])
+    incident_review = runner.invoke(app, ['new', 'incident-review-agent'])
+    weekly_report = runner.invoke(app, ['new', 'weekly-report-agent'])
+    github_pr_review = runner.invoke(app, ['new', 'github-pr-review-agent'])
+    data_quality = runner.invoke(app, ['new', 'data-quality-agent'])
 
     assert coding.exit_code == 0
     assert research.exit_code == 0
@@ -152,6 +179,12 @@ def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: Mon
     assert github_issue.exit_code == 0
     assert website_audit.exit_code == 0
     assert daily_report.exit_code == 0
+    assert api_regression.exit_code == 0
+    assert website_release.exit_code == 0
+    assert incident_review.exit_code == 0
+    assert weekly_report.exit_code == 0
+    assert github_pr_review.exit_code == 0
+    assert data_quality.exit_code == 0
     load_config(tmp_path / 'coding-agent' / 'easy-agent.yml')
     load_config(tmp_path / 'research-starter' / 'easy-agent.yml')
     load_config(tmp_path / 'data-agent' / 'easy-agent.yml')
@@ -164,6 +197,12 @@ def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: Mon
     load_config(tmp_path / 'github-issue-agent' / 'easy-agent.yml')
     assert load_config(tmp_path / 'website-audit-agent' / 'easy-agent.yml').browser.enabled is True
     load_config(tmp_path / 'daily-report-agent' / 'easy-agent.yml')
+    load_config(tmp_path / 'api-regression-agent' / 'easy-agent.yml')
+    assert load_config(tmp_path / 'website-release-check-agent' / 'easy-agent.yml').browser.enabled is True
+    load_config(tmp_path / 'incident-review-agent' / 'easy-agent.yml')
+    load_config(tmp_path / 'weekly-report-agent' / 'easy-agent.yml')
+    load_config(tmp_path / 'github-pr-review-agent' / 'easy-agent.yml')
+    load_config(tmp_path / 'data-quality-agent' / 'easy-agent.yml')
     assert 'workbench' in (tmp_path / 'coding-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'official_source_search' in (tmp_path / 'research-starter' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'data_agent' in (tmp_path / 'data-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
@@ -176,6 +215,12 @@ def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: Mon
     assert 'github_issue_agent' in (tmp_path / 'github-issue-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'website_audit_agent' in (tmp_path / 'website-audit-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'daily_report_agent' in (tmp_path / 'daily-report-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'api_regression_agent' in (tmp_path / 'api-regression-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'website_release_check_agent' in (tmp_path / 'website-release-check-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'incident_review_agent' in (tmp_path / 'incident-review-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'weekly_report_agent' in (tmp_path / 'weekly-report-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'github_pr_review_agent' in (tmp_path / 'github-pr-review-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'data_quality_agent' in (tmp_path / 'data-quality-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'SERPAPI_API_KEY=<SECRET>' in (tmp_path / 'research-starter' / '.env.local.example').read_text(encoding='utf-8')
 
 

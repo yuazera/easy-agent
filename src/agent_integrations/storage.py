@@ -250,6 +250,14 @@ class SQLiteRunStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS run_notes (
+                    note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    note TEXT NOT NULL,
+                    author TEXT,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             self._ensure_runs_column(connection, 'session_id', 'TEXT')
@@ -409,14 +417,52 @@ class SQLiteRunStore:
             node_count = connection.execute('SELECT COUNT(*) FROM node_events WHERE run_id = ?', (run_id,)).fetchone()[0]
             checkpoint_count = connection.execute('SELECT COUNT(*) FROM checkpoints WHERE run_id = ?', (run_id,)).fetchone()[0]
             human_count = connection.execute('SELECT COUNT(*) FROM human_requests WHERE run_id = ?', (run_id,)).fetchone()[0]
+            note_count = connection.execute('SELECT COUNT(*) FROM run_notes WHERE run_id = ?', (run_id,)).fetchone()[0]
         return {
             **run,
             'event_count': int(event_count),
             'node_count': int(node_count),
             'checkpoint_count': int(checkpoint_count),
             'human_request_count': int(human_count),
+            'note_count': int(note_count),
             'child_run_count': len(self.list_child_runs(run_id)),
         }
+
+    def add_run_note(self, run_id: str, note: str, *, author: str | None = None) -> dict[str, Any]:
+        self.load_run(run_id)
+        created_at = self._now()
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                'INSERT INTO run_notes(run_id, note, author, created_at) VALUES (?, ?, ?, ?)',
+                (run_id, note, author, created_at),
+            )
+            connection.commit()
+            note_id = int(cursor.lastrowid or 0)
+        return {
+            'note_id': note_id,
+            'run_id': run_id,
+            'note': note,
+            'author': author,
+            'created_at': created_at,
+        }
+
+    def list_run_notes(self, run_id: str) -> list[dict[str, Any]]:
+        self.load_run(run_id)
+        with closing(self._connect()) as connection:
+            rows = connection.execute(
+                'SELECT note_id, run_id, note, author, created_at FROM run_notes WHERE run_id = ? ORDER BY note_id ASC',
+                (run_id,),
+            ).fetchall()
+        return [
+            {
+                'note_id': int(row[0]),
+                'run_id': row[1],
+                'note': row[2],
+                'author': row[3],
+                'created_at': row[4],
+            }
+            for row in rows
+        ]
 
     def list_child_runs(self, run_id: str) -> list[dict[str, Any]]:
         with closing(self._connect()) as connection:

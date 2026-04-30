@@ -43,6 +43,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added workflow and triage operator surfaces:
   - `easy-agent workflow list|show|init|doctor|plan|run`
   - `easy-agent runs triage`
+- Added stricter workflow and explanation helpers:
+  - `easy-agent workflow validate`
+  - `easy-agent workflow explain`
+- Added expanded run inspection and handoff-note surfaces:
+  - `easy-agent runs inspect <run_id> --format markdown|html --output <path>`
+  - `easy-agent runs notes add|list <run_id>`
+- Added cost and local operations views:
+  - `easy-agent report costs`
+  - `easy-agent console`
+- Added static MCP and federation topology helpers:
+  - `easy-agent mcp doctor`
+  - `easy-agent mcp test <server>` with static mode by default and live mode behind `--live`
+  - `easy-agent federation graph`
 - Added MCP-first browser helper surfaces:
   - `easy-agent browser smoke`
   - `easy-agent browser snapshot`
@@ -78,9 +91,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `github-issue-agent`
   - `website-audit-agent`
   - `daily-report-agent`
+  - `api-regression-agent`
+  - `website-release-check-agent`
+  - `incident-review-agent`
+  - `weekly-report-agent`
+  - `github-pr-review-agent`
+  - `data-quality-agent`
   - `meeting-notes-agent`
   - `content-pipeline-agent`
 - Added a lightweight Python `AgentApp` facade over `EasyAgentRuntime` for config-driven embedding, including workflow planning/running, browser audit planning/running, and run bundle export helpers.
+- Added Python `AgentApp` helpers for workflow doctor output, run inspection, run notes, dashboard export, and best-effort cost reporting.
 - Added setup preflight and config-doctor risk checks for Python baseline drift, local tool availability, required environment variables, MCP roots/auth, federation auth, workbench executors, storage portability, human-loop coverage, and eval readiness.
 - Added scenario starter templates for MCP filesystem, public-eval smoke, federation loopback, workbench-backed coding tasks, coding tasks, and source-first research tasks.
 - Added trace-tree generation from existing runtime event envelopes with span status, duration, input/output hashes, retry count, checkpoint id, and parent/child structure.
@@ -122,6 +142,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Enhanced the static dashboard with failed/waiting/interrupted run attention rows, pending approval rows, browser readiness, browser artifacts, and generated failure-to-fix commands.
 - Enhanced the static dashboard with suggested next steps that point operators to triage, approvals, browser checks, connector checks, and report refresh commands.
 - Enhanced the static dashboard with workflow and template recommendations plus copyable `runs inspect` and `runs bundle` commands so operators can move from evidence to a concrete `workflow.yml`, bundle, or starter scenario.
+- Enhanced the static dashboard with a cost and reliability section built from stored trace evidence.
+- Enhanced template listing with tag/risk filtering, detailed `template show`, and local intent-based `template recommend` ranking.
+- Enhanced OpenTelemetry-style trace export with best-effort GenAI operation, provider, agent, tool, and error attributes while keeping the native trace tree as the source of truth.
 - Extended workflow packs with portable versioned YAML files and optional bundle-on-completion evidence export.
 - Standardized generated starter template README files around Run, Recommended Workflow, Smoke, Diagnostics, and Next Steps, and added a starter `workflow.yml` to every template.
 - Added advice-only run bundles that export run summary, triage JSON, fix Markdown/HTML, trace tree JSON/HTML, browser artifact inventory, copied browser artifacts, and a local README.
@@ -156,13 +179,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_runtime_facade.py tests/unit/test_readme_snapshot.py -q` with `18 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_cli_productivity.py tests/unit/test_config.py tests/unit/test_readme_snapshot.py -q` with `54 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/unit/test_cli_onboarding.py tests/unit/test_cli_general.py tests/unit/test_cli_productivity.py tests/unit/test_config.py tests/unit/test_readme_snapshot.py -q` with `55 passed`
-- `.\.venv\Scripts\python.exe -m pytest tests\unit\test_cli_general.py tests\unit\test_cli_productivity.py tests\unit\test_cli_onboarding.py tests\unit\test_runtime_facade.py tests\unit\test_readme_snapshot.py -q` with `32 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests\unit\test_cli_general.py tests\unit\test_cli_productivity.py tests\unit\test_cli_onboarding.py tests\unit\test_runtime_facade.py tests\unit\test_readme_snapshot.py -q` with `33 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests\unit\test_readme_snapshot.py -q` with `3 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/unit -q --basetemp=%TEMP%\easy-agent-pytest\unit-full-<timestamp>` with `230 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests\unit -q --basetemp=%TEMP%\easy-agent-pytest\unit-full-<timestamp>` with `232 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests\unit -q --basetemp=%TEMP%\easy-agent-pytest\unit-full-<timestamp>` with `233 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/integration/test_real_network_eval.py -m real -q --basetemp=%TEMP%\easy-agent-pytest\real-network-<timestamp>` with `1 passed`
 - `.\.venv\Scripts\python.exe -m pytest tests/integration -m real -q --basetemp=%TEMP%\easy-agent-pytest\integration-full-<timestamp>` with `7 passed`, `2 warnings`
-- CLI smoke passed for wizard creation, enhanced static dashboard export, advice-only HTML run fix packages, run inspect/bundle export, workflow doctor/plan, browser doctor, browser artifacts, browser SEO/a11y/link plans, connector diagnostics, Playwright MCP browser readiness, browser task-pack inspection, report trend, local skill catalog listing, and `new customer-support-agent` / `new github-issue-agent` / `new website-audit-agent` / `new daily-report-agent`.
+- CLI smoke passed for wizard creation, enhanced static dashboard export, advice-only HTML run fix packages, run inspect/bundle export, workflow doctor/validate/explain/plan, browser doctor, browser artifacts, browser SEO/a11y/link plans, connector diagnostics, static MCP doctor/test, federation graph export, Playwright MCP browser readiness, browser task-pack inspection, report trend, report costs, local console dry run, local skill catalog listing, and `new customer-support-agent` / `new github-issue-agent` / `new website-audit-agent` / `new daily-report-agent`.
 
 ## [0.3.5] - 2026-04-14
 

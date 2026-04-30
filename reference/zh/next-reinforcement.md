@@ -11,7 +11,7 @@
 - 把 raw official BFCL v4 归一化路径继续推进到更广的 agentic 与 multihop 覆盖，并补齐更清晰的官方分类诊断。
 - 在拿到本地数据导出与 grader 凭据后，把新交付的 `official_source_search` 与 `browsecomp_subset` / `simpleqa_subset` 支持推进成可刷新分数的评测切片。
 - 在不随意扩大 model-facing runtime surface 的前提下，继续深化 MCP 通知对齐，包括 resource updates、prompt-detail refresh 与 template diff telemetry。
-- 把新的 wizard、connector diagnostics、workflow YAML doctor/plan/run、`runs inspect`、`runs bundle`、browser smoke/snapshot/audit/seo/a11y/links/report helpers、browser doctor/artifact inspection、browser-specific task packs、advice-only HTML run fix package、带可复制命令的静态 dashboard workflow/template recommendations、本地 skill catalog workflow、Python `AgentApp` workflow/browser/bundle helpers 与 federation-demo checks 作为下一层 operator-facing 易用性入口，再考虑引入更重的 runtime 依赖。
+- 把新的 wizard、connector diagnostics、template metadata/recommendation market、workflow YAML doctor/validate/explain/plan/run、`runs inspect`、run notes、`runs bundle`、browser smoke/snapshot/audit/seo/a11y/links/report helpers、browser doctor/artifact inspection、MCP 静态 doctor/test、federation graph export、browser-specific task packs、advice-only HTML run fix package、cost reports、只读本地 console、带可复制命令的静态 dashboard workflow/template recommendations、本地 skill catalog workflow、Python `AgentApp` workflow/browser/bundle/dashboard/cost helpers 与 federation-demo checks 作为下一层 operator-facing 易用性入口，再考虑引入更重的 runtime 依赖。
 
 ## 上手与诊断补强
 
@@ -23,7 +23,7 @@
 - 把 `new <scenario>` 保持为从意图到可运行项目的最短路径，同时把 `wizard --scenario <name>` 作为带静态检查、下一步命令和可选 mock smoke 的 guided path，减少用户一开始手写 YAML 的需求
 - 把 `config doctor` 保持为 live-provider 运行前的静态风险门禁，覆盖 env readiness、MCP roots/auth、federation auth、executor readiness、storage portability 与 human-loop coverage
 - 模板继续只围绕已交付 runtime contract 扩展，并为 approval flow、harness flow、MCP resource catalog flow、federation loopback flow 与 workbench-backed coding tasks 增加 focused smoke tests
-- 把 `runs inspect` 做成失败 run 后默认的下一步，同时保留 `runs explain` 作为原始分类器输出，并保留 `runs triage` 作为紧凑的 severity/actionability 视图；当用户需要可交接的修复建议时，使用 `runs fix` 生成 advice-only repair prompt、安全命令、HTML 交接页和 task-pack 选择；当用户需要完整 handoff 目录时，用 `runs bundle` 同步导出 run summary、triage、fix、trace 与 browser artifact 证据
+- 把 `runs inspect` 做成失败 run 后默认的下一步，并覆盖 Markdown/HTML export、diagnostic code、notes、repair prompt 与 cost summary；同时保留 `runs explain` 作为原始分类器输出，并保留 `runs triage` 作为紧凑的 severity/actionability 视图；当用户需要可交接的修复建议时，使用 `runs fix` 生成 advice-only repair prompt、安全命令、HTML 交接页和 task-pack 选择；当用户需要完整 handoff 目录时，用 `runs bundle` 同步导出 run summary、triage、fix、trace 与 browser artifact 证据
 - 让 trace 先作为排障事实来源，用 `traces open` 和可搜索 HTML export 改善本地检查体验，用 `report latest`、dashboard HTML 与 report trend HTML 汇总可用证据，等字段稳定后再提升为 public evaluation 与 OpenTelemetry export contract
 - 每个新的高层能力都配套 mock-backed smoke path 和可选 live-provider path，让首次运行不再依赖本地凭据是否齐全
 - 让 Python `AgentApp` facade 保持轻量，让嵌入式应用继续复用 CLI 同款 config-driven runtime，而不是形成第二套 orchestration surface
@@ -43,13 +43,16 @@
 - 用 `connectors list`、`connectors doctor` 和 `connectors test <name>` 做 model、storage、search、MCP、workbench、federation 与 browser-facing surface 的静态就绪检查
 - browser 诊断需要明确当前边界：Playwright MCP 配置、static doctor 和 artifact listing 已经交付，但真实导航、截图、表单与下载仍取决于用户本地 Node/npm、browser、MCP startup 与审批设置
 - 用 `task list`、`task show` 和 `task run` 承载 repo review、bug fix、docs refresh、release check、data summary、browser QA/research/form checks 与 federation loopback validation 等打包 workflow
-- 用 `workflow list`、`workflow show`、`workflow init`、`workflow doctor`、`workflow plan` 和 `workflow run` 把 task packs 包成 operator-facing workflow，通过可携带的 `workflow.yml`、static preflight checks、可选 bundle-on-completion 与 next commands，再进入 model-backed execution
+- 用 `template list --tag/--risk`、`template show` 与 `template recommend` 作为本地 starter market 入口，让 API regression、website release、incident review、PR review、reporting 与 data-quality starters 可以按意图发现，而不是靠记住名称
+- 用 `workflow list`、`workflow show`、`workflow init`、`workflow doctor`、`workflow validate`、`workflow explain`、`workflow plan` 和 `workflow run` 把 task packs 包成 operator-facing workflow，通过可携带的 `workflow.yml`、static preflight checks、strict validation、可解释的风险摘要、可选 bundle-on-completion 与 next commands，再进入 model-backed execution
 - 用 `runs inspect` 作为 dashboard suggestions、browser report 与 workflow result 里的短路径失败诊断入口
-- 用 `dashboard` 作为静态本地运营页面，先不引入持久 Web server；这样 operator view 仍然无依赖，并且方便把 failed runs、approvals、browser readiness、browser artifacts、workflow recommendations、template recommendations、可复制 inspect/bundle 命令和 run evidence 一起归档
+- 用 `dashboard` 作为静态本地运营页面，先不引入持久 Web server；这样 operator view 仍然无依赖，并且方便把 failed runs、approvals、browser readiness、browser artifacts、workflow recommendations、template recommendations、cost/reliability summaries、可复制 inspect/bundle 命令和 run evidence 一起归档
+- 用 `report costs` 与 `console --dry-run` 作为轻量 cost/reliability 与本地运营 shell，再考虑引入持久服务或数据库支撑的 console
 - 保持 `task run --dry-run`、`workflow plan` 与 `workflow run --dry-run` 对 prompt review 与审批前检查有用，避免任务直接进入 model-backed agent
 - 用 `report trend` 对比本地 benchmark、public-eval 与 real-network artifacts 的变化，而不是手工阅读多个 JSON 文件
 - `traces export --otel-json` 继续标记为 experimental；在 OpenTelemetry GenAI conventions 仍在演进时，本地 trace tree 仍是事实来源
 - 用 `skills catalog list/install` 和 `plugins doctor` 作为本地安装/就绪路径，再推进远程 marketplace 或 signed plugin distribution
+- 用 `mcp doctor`、静态 `mcp test` 与 `federation graph` 作为低风险拓扑检查，再进入 live MCP startup 或远端 federation traffic
 - 用 `integration federation-demo` 作为轻量 federation proof，再运行完整 real-network matrix
 - 持续维护 skill metadata 中的 risk、dependencies 与 smoke prompt，让 CLI 和文档可以说明哪些 skill 适合 mock-first 或 live-provider flow
 

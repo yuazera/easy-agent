@@ -177,12 +177,72 @@ def register(app: typer.Typer) -> None:
 
 
 @template_app.command('list')
-def list_templates() -> None:
+def list_templates(
+    tag: str | None = typer.Option(None, '--tag', help='Filter templates by tag.'),
+    risk: str | None = typer.Option(None, '--risk', help='Filter templates by risk: low, medium, or high.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    entries = _template_catalog()
+    if tag:
+        entries = [item for item in entries if tag in item['tags']]
+    if risk:
+        entries = [item for item in entries if item['risk'] == risk]
+    if output_format == 'json':
+        console.print_json(json.dumps({'templates': entries}, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
     table = Table(title='easy-agent templates')
     table.add_column('Name', style='cyan')
+    table.add_column('Risk', style='yellow')
+    table.add_column('Tags', style='magenta')
     table.add_column('Description', style='green')
-    for name, template in _templates().items():
-        table.add_row(name, str(template['description']))
+    for item in entries:
+        table.add_row(str(item['name']), str(item['risk']), ', '.join(str(tag) for tag in item['tags']), str(item['description']))
+    console.print(table)
+
+
+@template_app.command('show')
+def show_template(
+    name: str = typer.Argument(..., help='Template name.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    payload = _template_catalog_entry(name)
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f'template: {name}')
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    for key in ['name', 'description', 'risk', 'recommended_workflow']:
+        table.add_row(key, str(payload[key]))
+    table.add_row('tags', ', '.join(str(item) for item in payload['tags']))
+    table.add_row('dependencies', ', '.join(str(item) for item in payload['dependencies']) or '-')
+    table.add_row('smoke_commands', '\n'.join(str(item) for item in payload['smoke_commands']))
+    table.add_row('next_commands', '\n'.join(str(item) for item in payload['next_commands']))
+    console.print(table)
+
+
+@template_app.command('recommend')
+def recommend_template(
+    goal: str = typer.Option(..., '--goal', help='Short description of what you want to build.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    scored = _recommend_templates(goal)
+    if output_format == 'json':
+        console.print_json(json.dumps({'goal': goal, 'recommendations': scored}, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title='template recommendations')
+    table.add_column('Template', style='cyan')
+    table.add_column('Score', style='yellow')
+    table.add_column('Reason')
+    table.add_column('Command', style='green')
+    for item in scored[:8]:
+        table.add_row(str(item['name']), str(item['score']), str(item['reason']), str(item['command']))
     console.print(table)
 
 
@@ -518,6 +578,85 @@ def _templates() -> dict[str, dict[str, Any]]:
                 ),
             ),
         },
+        'api-regression-agent': {
+            'description': 'Business-ready API regression assistant for endpoint checks, contract drift, and release gates.',
+            'files': _template_files(
+                'api-regression-agent',
+                'A practical starter for API regression planning, contract drift checks, and release gates.',
+                _business_agent_template_config(
+                    graph_name='api_regression_agent',
+                    agent_name='api_regression_specialist',
+                    description='API regression assistant for endpoint checks, contract drift, and release gates.',
+                    prompt='For real API regression work, separate endpoint inventory, expected contracts, changed behavior, failing examples, and release-blocking risks.',
+                ),
+            ),
+        },
+        'website-release-check-agent': {
+            'description': 'Business-ready website release checker for browser smoke, SEO, a11y, and link risk.',
+            'files': _template_files(
+                'website-release-check-agent',
+                'A practical starter for website release checks with browser-backed evidence.',
+                _browser_business_agent_template_config(
+                    graph_name='website_release_check_agent',
+                    agent_name='website_release_checker',
+                    description='Website release checker for browser smoke, SEO, accessibility, and link risk.',
+                    prompt='For real website release checks, run connector readiness first, collect browser snapshots, and separate release blockers from follow-up improvements.',
+                    tools=['python_echo', 'official_source_search'],
+                ),
+            ),
+        },
+        'incident-review-agent': {
+            'description': 'Business-ready incident review assistant for timelines, impact, causes, and action items.',
+            'files': _template_files(
+                'incident-review-agent',
+                'A practical starter for incident review, timeline reconstruction, and action tracking.',
+                _business_agent_template_config(
+                    graph_name='incident_review_agent',
+                    agent_name='incident_reviewer',
+                    description='Incident review assistant for timelines, impact, causes, and action items.',
+                    prompt='For real incident reviews, separate timeline facts, customer impact, suspected causes, mitigations, owners, and preventive follow-up.',
+                ),
+            ),
+        },
+        'weekly-report-agent': {
+            'description': 'Business-ready weekly report assistant for evidence, trends, risks, and priorities.',
+            'files': _template_files(
+                'weekly-report-agent',
+                'A practical starter for weekly reporting from metrics, run evidence, and project notes.',
+                _business_agent_template_config(
+                    graph_name='weekly_report_agent',
+                    agent_name='weekly_reporter',
+                    description='Weekly report assistant for evidence, trends, risks, and priorities.',
+                    prompt='For real weekly reports, summarize progress, trend changes, risks, decisions, owners, and next-week priorities from supplied evidence.',
+                ),
+            ),
+        },
+        'github-pr-review-agent': {
+            'description': 'Business-ready GitHub PR review assistant for code risk, tests, docs, and release notes.',
+            'files': _template_files(
+                'github-pr-review-agent',
+                'A practical starter for PR review, regression risk, and release-readiness checks.',
+                _business_agent_template_config(
+                    graph_name='github_pr_review_agent',
+                    agent_name='pr_reviewer',
+                    description='GitHub PR review assistant for code risk, tests, docs, and release notes.',
+                    prompt='For real PR reviews, prioritize correctness, regression risk, missing tests, documentation drift, and release-note impact before style feedback.',
+                ),
+            ),
+        },
+        'data-quality-agent': {
+            'description': 'Business-ready data quality assistant for schema drift, missing values, and metric anomalies.',
+            'files': _template_files(
+                'data-quality-agent',
+                'A practical starter for data quality review and anomaly triage.',
+                _business_agent_template_config(
+                    graph_name='data_quality_agent',
+                    agent_name='data_quality_specialist',
+                    description='Data quality assistant for schema drift, missing values, and metric anomalies.',
+                    prompt='For real data quality work, separate schema issues, missing or invalid values, anomaly evidence, business impact, and recommended checks.',
+                ),
+            ),
+        },
         'customer-support-agent': {
             'description': 'Business-ready support assistant for tickets, replies, and escalation summaries.',
             'files': _template_files(
@@ -654,6 +793,115 @@ def _templates() -> dict[str, dict[str, Any]]:
     }
 
 
+def _template_catalog() -> list[dict[str, Any]]:
+    return [_template_catalog_entry(name) for name in _templates()]
+
+
+def _template_catalog_entry(name: str) -> dict[str, Any]:
+    templates = _templates()
+    if name not in templates:
+        raise typer.BadParameter(f"Unknown template '{name}'. Run 'easy-agent template list'.")
+    metadata = _template_metadata(name)
+    workflow_pack = _recommended_workflow_pack(name)
+    return {
+        'name': name,
+        'description': str(templates[name]['description']),
+        'tags': metadata['tags'],
+        'risk': metadata['risk'],
+        'dependencies': metadata['dependencies'],
+        'recommended_workflow': workflow_pack,
+        'smoke_commands': _template_smoke_commands(name),
+        'next_commands': [
+            f'easy-agent new {name}',
+            f'easy-agent workflow show {workflow_pack}',
+            'easy-agent dashboard -c easy-agent.yml --output dashboard.html',
+        ],
+    }
+
+
+def _template_metadata(name: str) -> dict[str, Any]:
+    tags = {'starter'}
+    risk = 'low'
+    dependencies: list[str] = []
+    if name in _browser_scenario_templates():
+        tags.update({'browser', 'mcp', 'web'})
+        risk = 'medium'
+        dependencies.append('Node.js/npm for Playwright MCP')
+    if name in {'coding-agent', 'workbench-coding-agent', 'github-issue-agent', 'github-pr-review-agent', 'api-regression-agent'}:
+        tags.update({'coding', 'repo'})
+    if name in {'research-agent', 'competitor-research-agent', 'seo-agent'}:
+        tags.update({'research', 'search'})
+        dependencies.append('optional SERPAPI_API_KEY for live search')
+    if name in {'data-agent', 'data-quality-agent', 'daily-report-agent', 'weekly-report-agent'}:
+        tags.update({'data', 'reporting'})
+    if name in {'ops-agent', 'release-agent', 'incident-review-agent', 'website-release-check-agent'}:
+        tags.update({'ops', 'release'})
+    if name in {'customer-support-agent', 'sales-agent', 'meeting-notes-agent', 'content-pipeline-agent', 'document-agent'}:
+        tags.update({'business', 'docs'})
+    return {'tags': sorted(tags), 'risk': risk, 'dependencies': dependencies}
+
+
+def _template_smoke_commands(name: str) -> list[str]:
+    if name in _browser_scenario_templates():
+        return [
+            'easy-agent config doctor -c easy-agent.yml',
+            'easy-agent connectors test browser -c easy-agent.yml',
+            'easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run',
+        ]
+    return [
+        'easy-agent config doctor -c easy-agent.yml',
+        'easy-agent run "Hello from the template" -c easy-agent.yml',
+        'easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run',
+    ]
+
+
+def _recommend_templates(goal: str) -> list[dict[str, Any]]:
+    words = {token for token in _tokenize(goal) if len(token) > 2}
+    scored: list[dict[str, Any]] = []
+    for item in _template_catalog():
+        haystack = ' '.join(
+            [
+                str(item['name']),
+                str(item['description']),
+                ' '.join(str(tag) for tag in item['tags']),
+                str(item['recommended_workflow']),
+            ]
+        )
+        matched = sorted(words.intersection(_tokenize(haystack)))
+        score = len(matched)
+        if not score and item['name'] == 'basic-agent':
+            score = 1
+            matched = ['starter']
+        reason = f"matched: {', '.join(matched)}" if matched else 'general starter fallback'
+        scored.append(
+            {
+                'name': item['name'],
+                'score': score,
+                'reason': reason,
+                'risk': item['risk'],
+                'recommended_workflow': item['recommended_workflow'],
+                'command': f"easy-agent new {item['name']}",
+            }
+        )
+    return sorted(scored, key=lambda item: (-int(item['score']), str(item['name'])))
+
+
+def _tokenize(text: str) -> set[str]:
+    normalized = ''.join(ch.lower() if ch.isalnum() else ' ' for ch in text)
+    aliases = {
+        'seo': {'seo', 'search', 'website'},
+        'browser': {'browser', 'web', 'website'},
+        'pr': {'pr', 'pull', 'request', 'github'},
+        'api': {'api', 'regression', 'contract'},
+        'incident': {'incident', 'ops', 'runbook'},
+        'report': {'report', 'daily', 'weekly', 'metrics'},
+    }
+    tokens = set(normalized.split())
+    for token in list(tokens):
+        tokens.update(aliases.get(token, set()))
+    return tokens
+
+
 def _template_files(name: str, description: str, config: str) -> dict[str, str]:
     env_example = _template_env_example(name)
     workflow_pack = _recommended_workflow_pack(name)
@@ -774,6 +1022,12 @@ def _recommended_workflow_pack(name: str) -> str:
         'github-issue-agent': 'bug-fix',
         'website-audit-agent': 'browser-audit',
         'daily-report-agent': 'data-summary',
+        'api-regression-agent': 'release-check',
+        'website-release-check-agent': 'browser-audit',
+        'incident-review-agent': 'release-check',
+        'weekly-report-agent': 'data-summary',
+        'github-pr-review-agent': 'bug-fix',
+        'data-quality-agent': 'data-summary',
         'web-monitor-agent': 'browser-qa',
         'seo-agent': 'browser-audit',
         'competitor-research-agent': 'browser-research',
@@ -810,7 +1064,14 @@ def _template_workflow(name: str, pack: str) -> str:
 
 
 def _browser_scenario_templates() -> set[str]:
-    return {'browser-agent', 'web-monitor-agent', 'seo-agent', 'competitor-research-agent', 'website-audit-agent'}
+    return {
+        'browser-agent',
+        'web-monitor-agent',
+        'seo-agent',
+        'competitor-research-agent',
+        'website-audit-agent',
+        'website-release-check-agent',
+    }
 
 
 def _template_env_example(name: str) -> str:
@@ -827,6 +1088,11 @@ def _template_env_example(name: str) -> str:
         'ops-agent',
         'browser-agent',
         'github-issue-agent',
+        'api-regression-agent',
+        'incident-review-agent',
+        'weekly-report-agent',
+        'github-pr-review-agent',
+        'data-quality-agent',
         'daily-report-agent',
         'customer-support-agent',
         'sales-agent',
@@ -837,7 +1103,7 @@ def _template_env_example(name: str) -> str:
         'content-pipeline-agent',
     }:
         lines.append('# No credentials are required for the mock-backed smoke path.')
-    elif name in {'research-agent', 'seo-agent', 'competitor-research-agent', 'website-audit-agent'}:
+    elif name in {'research-agent', 'seo-agent', 'competitor-research-agent', 'website-audit-agent', 'website-release-check-agent'}:
         lines.append('# No credentials are required for the mock-backed smoke path.')
         lines.append('SERPAPI_API_KEY=<SECRET>')
     elif name == 'web-monitor-agent':

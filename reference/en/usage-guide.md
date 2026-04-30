@@ -40,6 +40,12 @@ uv run easy-agent new competitor-research-agent
 uv run easy-agent new github-issue-agent
 uv run easy-agent new website-audit-agent
 uv run easy-agent new daily-report-agent
+uv run easy-agent new api-regression-agent
+uv run easy-agent new website-release-check-agent
+uv run easy-agent new incident-review-agent
+uv run easy-agent new weekly-report-agent
+uv run easy-agent new github-pr-review-agent
+uv run easy-agent new data-quality-agent
 uv run easy-agent new meeting-notes-agent
 uv run easy-agent new content-pipeline-agent
 uv run easy-agent new customer-support-agent
@@ -50,6 +56,9 @@ uv run easy-agent new release-agent
 uv run easy-agent init --provider mock
 uv run easy-agent quickstart --provider mock
 uv run easy-agent template list
+uv run easy-agent template list --tag browser --format json
+uv run easy-agent template show website-release-check-agent
+uv run easy-agent template recommend --goal "website release SEO audit"
 uv run easy-agent template create basic-agent <target-dir>
 uv run easy-agent config validate -c easy-agent.yml
 uv run easy-agent config explain -c easy-agent.yml
@@ -63,6 +72,10 @@ uv run easy-agent runs show <run_id> -c easy-agent.yml
 uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent runs triage <run_id> -c easy-agent.yml
 uv run easy-agent runs inspect <run_id> -c easy-agent.yml
+uv run easy-agent runs inspect <run_id> -c easy-agent.yml --format markdown --output inspect.md
+uv run easy-agent runs inspect <run_id> -c easy-agent.yml --format html --output inspect.html
+uv run easy-agent runs notes add <run_id> "handoff note" -c easy-agent.yml
+uv run easy-agent runs notes list <run_id> -c easy-agent.yml
 uv run easy-agent runs fix <run_id> -c easy-agent.yml --format markdown --output fix.md
 uv run easy-agent runs fix <run_id> -c easy-agent.yml --format html --output fix.html
 uv run easy-agent runs bundle <run_id> -c easy-agent.yml --output run-bundle
@@ -73,7 +86,9 @@ uv run easy-agent traces export <run_id> -c easy-agent.yml --otel-json --output 
 uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent report latest -c easy-agent.yml --html --output report.html
 uv run easy-agent report trend --history reports --html --output trend.html
+uv run easy-agent report costs -c easy-agent.yml --html --output costs.html
 uv run easy-agent dashboard -c easy-agent.yml --output dashboard.html
+uv run easy-agent console -c easy-agent.yml --dry-run
 uv run easy-agent connectors list -c easy-agent.yml
 uv run easy-agent connectors doctor -c easy-agent.yml
 uv run easy-agent connectors test model -c easy-agent.yml
@@ -91,6 +106,8 @@ uv run easy-agent workflow list
 uv run easy-agent workflow init browser-audit --output workflow.yml --context "Audit the home page"
 uv run easy-agent workflow show browser-qa
 uv run easy-agent workflow doctor workflow.yml -c easy-agent.yml
+uv run easy-agent workflow validate workflow.yml -c easy-agent.yml --strict
+uv run easy-agent workflow explain workflow.yml -c easy-agent.yml
 uv run easy-agent workflow plan workflow.yml -c easy-agent.yml
 uv run easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
 uv run easy-agent workflow run browser-qa -c easy-agent.yml --dry-run --context "Check the home page"
@@ -102,6 +119,8 @@ uv run easy-agent skills catalog list
 uv run easy-agent skills catalog install python_echo --target skills/installed --force
 uv run easy-agent plugins doctor -c easy-agent.yml
 uv run easy-agent integration federation-demo -c easy-agent.yml
+uv run easy-agent mcp doctor -c easy-agent.yml
+uv run easy-agent mcp test <server> -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -109,6 +128,8 @@ uv run easy-agent mcp resources subscribe <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources unsubscribe <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp prompts list <server> -c easy-agent.yml
 uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"notes"}' -c easy-agent.yml
+uv run easy-agent federation graph -c easy-agent.yml --format mermaid
+uv run easy-agent federation graph -c easy-agent.yml --format html --output federation.html
 ```
 
 ## Onboarding Flow
@@ -121,6 +142,9 @@ Use the `mock` provider when you want to verify the runtime, tools, storage, and
 - `quickstart --provider mock` creates a temporary local config, runs one deterministic tool-using agent turn, and prints the follow-up `runs show`, `runs explain`, and `traces export` commands for the new run id.
 - `new <scenario> [target-dir]` is the shortest project creation path. It wraps `template create`, defaults the target directory to the scenario name, and keeps the older template commands available.
 - `template list` shows starter project shapes.
+- `template list --tag <tag> --risk <risk> --format json` filters the local template market by metadata.
+- `template show <name>` prints tags, risk, dependencies, recommended workflow, smoke commands, and next commands for one starter.
+- `template recommend --goal "<goal>"` ranks starters using a local keyword match, so the user can start from intent instead of reading the whole catalog.
 - `template create basic-agent <target-dir>` creates a minimal single-agent project.
 - `template create human-approval-agent <target-dir>` creates the same local starter with `python_echo` marked as a sensitive tool.
 - `template create longrun-harness <target-dir>` creates a minimal initializer / worker / evaluator harness.
@@ -139,6 +163,12 @@ Use the `mock` provider when you want to verify the runtime, tools, storage, and
 - `template create github-issue-agent <target-dir>` creates an issue-triage starter for reproduction notes, scoped fixes, tests, and evidence bundles.
 - `template create website-audit-agent <target-dir>` creates an MCP-first website audit starter for SEO, accessibility, link checks, and browser evidence.
 - `template create daily-report-agent <target-dir>` creates a daily metrics/reporting starter for observed changes, blockers, owners, and next actions.
+- `template create api-regression-agent <target-dir>` creates an API regression starter for endpoint checks, contract drift, and release gates.
+- `template create website-release-check-agent <target-dir>` creates a browser-backed website release checker for smoke, SEO, accessibility, and link risk.
+- `template create incident-review-agent <target-dir>` creates an incident review starter for timeline, impact, cause, and action tracking.
+- `template create weekly-report-agent <target-dir>` creates a weekly reporting starter for evidence, trends, risks, and priorities.
+- `template create github-pr-review-agent <target-dir>` creates a PR review starter for code risk, tests, docs, and release notes.
+- `template create data-quality-agent <target-dir>` creates a data quality starter for schema drift, missing values, and metric anomalies.
 - `template create meeting-notes-agent <target-dir>` creates a meeting summary, decision, owner, and follow-up starter.
 - `template create content-pipeline-agent <target-dir>` creates a content brief, draft, review, and publishing-checklist starter.
 - `template create customer-support-agent <target-dir>` creates a support triage and response-drafting starter.
@@ -161,6 +191,8 @@ Durable run inspection now has two layers:
 - `runs explain <run_id>` classifies common failure causes such as missing provider credentials, schema validation failures, guardrail blocks, MCP failures, iteration loops, and known Windows cleanup warnings.
 - `runs triage <run_id>` wraps `runs explain` and the repair-package classifier into one advice-only operator view. It returns severity, actionability, selected task pack, approval/browser flags, retry advice, evidence count, and next commands without mutating files or rerunning the agent.
 - `runs inspect <run_id>` is the unified read-only diagnosis entrypoint. It combines run summary, explanation, triage, fix-package summary, trace counts, browser readiness/artifacts, bundle command, and next commands. Pass `--bundle` only when you explicitly want it to write an evidence bundle.
+- `runs inspect <run_id> --format markdown|html --output <path>` writes a shareable inspection package with diagnostic code, cost summary, notes, repair prompt, and next commands.
+- `runs notes add|list <run_id>` stores local handoff notes against a durable run and surfaces them in later inspections.
 - `runs fix <run_id>` creates an advice-only repair package. It reuses the stored run explanation, selects a built-in task pack such as `bug-fix`, `release-check`, or `browser-qa`, lists safe next commands, and can write JSON, Markdown, or standalone HTML without mutating files or rerunning the agent.
 - `runs bundle <run_id>` writes an advice-only evidence directory with run summary, triage JSON, fix Markdown/HTML, trace-tree JSON/HTML, browser artifact inventory, copied browser artifacts when available, and a local README. It is designed for handoff/debugging rather than automatic remediation.
 - `traces export <run_id>` returns a structured trace tree by default.
@@ -186,6 +218,10 @@ Use `dashboard -c easy-agent.yml --output dashboard.html` for a broader static l
 
 `report trend` compares local report artifacts in a directory and shows the latest score, previous score, and score delta for benchmark, public-eval, and real-network reports. Use `--html --output trend.html` for a standalone trend page.
 
+`report costs` summarizes best-effort run cost and reliability evidence from stored traces: run count, failed count, model/tool/MCP spans, retries, duration, and failure layers. It does not invent token costs when token usage is absent.
+
+`console --dry-run` prints the read-only local console endpoint. Without `--dry-run`, it serves the same dashboard HTML through Python's standard library and does not expose mutation endpoints.
+
 Trace-tree spans are derived from the existing runtime event envelope and include stable `span_id`, `parent_span_id`, `kind`, `status`, duration, input/output hashes, retry count, checkpoint id, and child spans. This keeps the current JSON trace path lightweight while leaving a future OpenTelemetry export path open.
 
 ## Connectors and Task Packs
@@ -201,12 +237,18 @@ Trace-tree spans are derived from the existing runtime event envelope and includ
 - `browser seo <url>`, `browser a11y <url>`, and `browser links <url>` are narrower audit plans for page metadata/content, accessibility-tree risks, and link quality. They remain Playwright MCP-first and plan-only unless `--run` is passed.
 - `browser report <run_id>` combines run triage, browser doctor, and browser artifact evidence for a browser-related run.
 - `browser artifacts` lists the current browser artifact directory without starting Playwright MCP. It classifies screenshots, snapshots, videos, archives, network captures, logs, and other files so browser failures can be inspected before reruns.
-- `workflow list|show|init|doctor|plan|run` exposes task packs as guided workflow packs. `workflow init <pack> --output workflow.yml` writes a minimal versioned workflow file with `pack`, `context`, `approval_mode`, and `bundle_on_completion`. `workflow doctor workflow.yml` performs static YAML and connector checks, `workflow plan workflow.yml` renders the prompt and acceptance criteria without execution, and `workflow run workflow.yml --dry-run` keeps the same prompt/preflight review path before any model-backed execution.
+- `workflow list|show|init|doctor|validate|explain|plan|run` exposes task packs as guided workflow packs. `workflow init <pack> --output workflow.yml` writes a minimal versioned workflow file with `pack`, `context`, `approval_mode`, and `bundle_on_completion`. `workflow doctor workflow.yml` performs static YAML and connector checks, `workflow validate --strict` turns warnings into failures, `workflow explain workflow.yml` explains risk and expected behavior, `workflow plan workflow.yml` renders the prompt and acceptance criteria without execution, and `workflow run workflow.yml --dry-run` keeps the same prompt/preflight review path before any model-backed execution.
 - `task list` shows built-in task packs.
 - `task show <pack>` prints the prompt template, recommended scenario, and acceptance criteria.
 - `task run <pack>` renders and runs the task through the configured entrypoint. Use `--dry-run` to inspect the prompt before execution.
 
 Built-in task packs currently include `repo-review`, `bug-fix`, `docs-refresh`, `release-check`, `data-summary`, `federation-loopback-demo`, `browser-qa`, `browser-research`, `browser-form-check`, and `browser-audit`.
+
+## MCP and Federation Operations
+
+- `mcp doctor` performs static MCP command, roots, URL, and auth checks without starting servers.
+- `mcp test <server>` defaults to static mode; pass `--live` only when you explicitly want to start the configured MCP server and list tools.
+- `federation graph --format json|mermaid|html` renders local remotes, exports, and recent durable task state without calling remote agents.
 
 ## Python Facade
 
@@ -220,9 +262,14 @@ try:
     result = app.run("Summarize this task")
     task_result = app.run_task("repo-review", context="Focus on tests")
     workflow = app.workflow_plan("workflow.yml")
+    doctor = app.workflow_doctor("workflow.yml")
     browser_plan = app.browser_audit("https://example.com", kind="seo")
+    inspection = app.inspect(str(result["run_id"]))
+    app.add_note(str(result["run_id"]), "handoff note")
     report = app.report()
+    costs = app.costs()
     trace = app.trace(str(result["run_id"]))
+    dashboard = app.dashboard("dashboard.html")
     bundle = app.run_bundle(str(result["run_id"]), output_dir="run-bundle")
 finally:
     app.close()

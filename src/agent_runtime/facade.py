@@ -11,7 +11,9 @@ import yaml
 from agent_common.models import HumanLoopMode
 from agent_runtime.bundles import write_run_bundle
 from agent_runtime.connectors import browser_artifacts, browser_doctor, connector_checks
-from agent_runtime.reports import latest_report_payload
+from agent_runtime.dashboard import dashboard_html, dashboard_payload
+from agent_runtime.diagnostics import build_triage_package, explain_run
+from agent_runtime.reports import build_cost_report, latest_report_payload
 from agent_runtime.runtime import EasyAgentRuntime, build_runtime
 from agent_runtime.tasks import get_task_pack, render_task_prompt, task_pack_payload
 
@@ -155,6 +157,48 @@ class AgentApp:
             copy_browser_artifacts=copy_browser_artifacts,
             force=force,
         )
+
+    def inspect(self, run_id: str) -> dict[str, Any]:
+        trace_tree = self.runtime.store.load_trace_tree(run_id)
+        raw_spans = trace_tree.get('spans')
+        spans: list[Any] = raw_spans if isinstance(raw_spans, list) else []
+        return {
+            'run_id': run_id,
+            'summary': self.runtime.store.load_run_summary(run_id),
+            'explanation': explain_run(self.runtime.store, run_id),
+            'triage': build_triage_package(self.runtime.store, run_id),
+            'trace': {
+                'span_count': len(spans),
+                'run': trace_tree.get('run', {}),
+            },
+            'notes': self.runtime.store.list_run_notes(run_id),
+        }
+
+    def add_note(self, run_id: str, note: str, *, author: str | None = None) -> dict[str, Any]:
+        return self.runtime.store.add_run_note(run_id, note, author=author)
+
+    def workflow_doctor(self, workflow_path: str | Path, *, config: str | Path | None = None) -> dict[str, Any]:
+        workflow = self._load_workflow(workflow_path)
+        config_path = self._config_path(config)
+        checks = [check.__dict__ for check in connector_checks(config_path)]
+        status = 'warn' if any(item['status'] in {'warn', 'error'} for item in checks) else 'ok'
+        return {
+            'workflow_path': str(workflow_path),
+            'workflow': workflow,
+            'status': status,
+            'checks': checks,
+        }
+
+    def dashboard(self, output: str | Path, *, config: str | Path | None = None) -> dict[str, Any]:
+        config_path = self._config_path(config)
+        payload = dashboard_payload(config_path)
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(dashboard_html(payload), encoding='utf-8')
+        return {'output': str(output_path), 'run_count': len(payload['runs'])}
+
+    def costs(self, *, config: str | Path | None = None, run_limit: int = 100) -> dict[str, Any]:
+        return build_cost_report(self._config_path(config), run_limit=run_limit)
 
     async def abrowser_audit(
         self,

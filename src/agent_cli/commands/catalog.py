@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from agent_cli.shared import with_runtime
+from agent_config.app import load_config
 from agent_runtime import EasyAgentRuntime, build_runtime
 
 console = Console()
@@ -65,6 +67,68 @@ def list_mcp(config: str = typer.Option('easy-agent.yml', '-c', '--config')) -> 
         console.print(table)
 
     asyncio.run(with_runtime(config, _run))
+
+
+@mcp_app.command('doctor')
+def doctor_mcp(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    loaded = load_config(config)
+    checks = [_mcp_server_check(server.model_dump(mode='json')) for server in loaded.mcp]
+    if not checks:
+        checks.append({'name': 'mcp', 'status': 'ok', 'message': 'No MCP servers are configured.', 'action': 'Add mcp entries when connector tools are needed.'})
+    payload = {'summary': _status_summary(checks), 'checks': checks}
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title='mcp doctor')
+    table.add_column('Status', style='cyan')
+    table.add_column('Server', style='green')
+    table.add_column('Message')
+    table.add_column('Action')
+    for check in checks:
+        table.add_row(str(check['status']), str(check['name']), str(check['message']), str(check['action']))
+    console.print(table)
+
+
+@mcp_app.command('test')
+def test_mcp(
+    server_name: str = typer.Argument(..., help='Configured MCP server name.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    live: bool = typer.Option(False, '--live', help='Start the MCP server and list tools. Default is static only.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    loaded = load_config(config)
+    server = loaded.mcp_map.get(server_name)
+    if server is None:
+        raise typer.BadParameter(f'Unknown MCP server: {server_name}')
+    check = _mcp_server_check(server.model_dump(mode='json'))
+    payload: dict[str, Any] = {'server': server_name, 'mode': 'live' if live else 'static', 'checks': [check]}
+    if live:
+        async def _run(runtime: EasyAgentRuntime) -> None:
+            tools = await runtime.mcp_manager.list_servers()
+            payload['tools'] = [tool.name for tool in tools.get(server_name, [])]
+
+        asyncio.run(with_runtime(config, _run))
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f'mcp test: {server_name}')
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    table.add_row('mode', str(payload['mode']))
+    table.add_row('status', str(check['status']))
+    table.add_row('message', str(check['message']))
+    if 'tools' in payload:
+        table.add_row('tools', ', '.join(str(item) for item in payload.get('tools', [])))
+    console.print(table)
+    if check['status'] == 'error':
+        raise typer.Exit(1)
 
 
 @mcp_roots_app.command('list')
@@ -274,6 +338,35 @@ def list_federation(config: str = typer.Option('easy-agent.yml', '-c', '--config
         console.print(table)
     finally:
         asyncio.run(runtime.aclose())
+
+
+@federation_app.command('graph')
+def graph_federation(
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('json', '--format', help='Output format: json, mermaid, or html.'),
+    output: str | None = typer.Option(None, '-o', '--output', help='Optional output file for mermaid or html.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = _federation_graph_payload(runtime)
+    finally:
+        asyncio.run(runtime.aclose())
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format == 'mermaid':
+        content = _federation_graph_mermaid(payload)
+    elif output_format == 'html':
+        content = _federation_graph_html(payload)
+    else:
+        raise typer.BadParameter('format must be json, mermaid, or html')
+    if output:
+        output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding='utf-8')
+        console.print_json(json.dumps({'output': str(output_path), 'format': output_format}, ensure_ascii=False))
+    else:
+        console.print(content)
 
 
 @federation_app.command('inspect')
@@ -668,6 +761,125 @@ def resubscribe_federation(
         )
 
     asyncio.run(with_runtime(config, _run))
+
+
+def _mcp_server_check(server: dict[str, Any]) -> dict[str, str]:
+    name = str(server.get('name') or 'mcp')
+    transport = str(server.get('transport') or 'stdio')
+    messages: list[str] = []
+    actions: list[str] = []
+    status = 'ok'
+    command = server.get('command')
+    if transport == 'stdio':
+        tokens = command if isinstance(command, list) else []
+        executable = str(tokens[0]) if tokens else ''
+        if executable and shutil.which(executable):
+            messages.append(f'{executable} is available.')
+        elif executable:
+            status = 'warn'
+            messages.append(f'{executable} is not on PATH.')
+            actions.append(f'Install {executable} or update the MCP command.')
+        else:
+            status = 'error'
+            messages.append('stdio MCP server has no command.')
+            actions.append('Set command for the MCP server.')
+        roots = server.get('roots')
+        if not roots:
+            status = 'warn' if status != 'error' else status
+            messages.append('No explicit roots are declared.')
+            actions.append('Declare roots to make filesystem boundaries clear.')
+    elif transport in {'http_sse', 'streamable_http'}:
+        if not (server.get('url') or server.get('rpc_url') or server.get('sse_url')):
+            status = 'error'
+            messages.append('Remote MCP URL is missing.')
+            actions.append('Set url, rpc_url, or sse_url.')
+        else:
+            messages.append(f'{transport} remote URL is configured.')
+        raw_auth = server.get('auth')
+        auth: dict[str, Any] = raw_auth if isinstance(raw_auth, dict) else {}
+        token_env = str(auth.get('token_env') or '')
+        if token_env and not os.environ.get(token_env):
+            status = 'warn' if status != 'error' else status
+            messages.append(f'{token_env} is missing.')
+            actions.append(f'Set {token_env} before live calls.')
+    else:
+        status = 'error'
+        messages.append(f'Unsupported MCP transport: {transport}.')
+        actions.append('Use stdio, http_sse, or streamable_http.')
+    return {
+        'name': name,
+        'status': status,
+        'message': ' '.join(messages) if messages else 'MCP server config is statically valid.',
+        'action': ' '.join(actions) if actions else 'No action needed.',
+    }
+
+
+def _status_summary(items: list[dict[str, str]]) -> dict[str, int]:
+    return {
+        'ok': sum(1 for item in items if item.get('status') == 'ok'),
+        'warn': sum(1 for item in items if item.get('status') == 'warn'),
+        'error': sum(1 for item in items if item.get('status') == 'error'),
+    }
+
+
+def _federation_graph_payload(runtime: EasyAgentRuntime) -> dict[str, Any]:
+    config = runtime.config.federation
+    return {
+        'server': {
+            'base_path': config.server.base_path,
+            'host': config.server.host,
+            'port': config.server.port,
+        },
+        'remotes': [
+            {'name': remote.name, 'base_url': remote.base_url, 'push_preference': remote.push_preference}
+            for remote in config.remotes
+        ],
+        'exports': [
+            {'name': item.name, 'target_type': item.target_type, 'target': item.target}
+            for item in config.exports
+        ],
+        'recent_tasks': runtime.store.list_federated_tasks()[:20],
+    }
+
+
+def _federation_graph_mermaid(payload: dict[str, Any]) -> str:
+    lines = ['graph LR', '  local[easy-agent local]']
+    raw_remotes = payload.get('remotes')
+    remotes: list[Any] = raw_remotes if isinstance(raw_remotes, list) else []
+    raw_exports = payload.get('exports')
+    exports: list[Any] = raw_exports if isinstance(raw_exports, list) else []
+    for item_raw in exports:
+        item = item_raw if isinstance(item_raw, dict) else {}
+        name = _graph_id(str(item.get('name') or 'export'))
+        lines.append(f'  local --> export_{name}[export: {name}]')
+    for item_raw in remotes:
+        item = item_raw if isinstance(item_raw, dict) else {}
+        name = _graph_id(str(item.get('name') or 'remote'))
+        lines.append(f'  local --> remote_{name}[remote: {name}]')
+    return '\n'.join(lines) + '\n'
+
+
+def _federation_graph_html(payload: dict[str, Any]) -> str:
+    mermaid = _federation_graph_mermaid(payload)
+    raw_json = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+    return f"""<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>easy-agent federation graph</title></head>
+<body>
+  <main>
+    <h1>easy-agent federation graph</h1>
+    <h2>Mermaid</h2>
+    <pre>{mermaid}</pre>
+    <h2>Raw JSON</h2>
+    <pre>{raw_json}</pre>
+  </main>
+</body>
+</html>
+"""
+
+
+def _graph_id(value: str) -> str:
+    return ''.join(ch if ch.isalnum() else '_' for ch in value).strip('_') or 'node'
 
 
 @federation_app.command('serve')

@@ -56,7 +56,7 @@ Most agent projects move quickly from "call a model" to "ship an application". T
 - Session memory, checkpoints, replay, branchable resume, and approval-aware recovery.
 - Guardrails, schema-aware tool validation, runtime event streaming, and persistent traces.
 - Durable run inspection with structured trace-tree export for debugging complex agent flows.
-- Offline `mock` provider plus `setup`, `wizard`, `init`, `quickstart`, scenario templates, connector diagnostics, task packs, workflow packs, `workflow init/doctor/plan/run workflow.yml`, `config doctor`, `runs explain`, advice-only `runs triage` / `runs inspect` / `runs fix` / `runs bundle`, `traces open`, `report latest`, `report trend`, standalone HTML trace/report/fix/dashboard export, dashboard workflow/template recommendations with copyable commands, and a light Python `AgentApp` facade for zero-credential onboarding and faster failure triage.
+- Offline `mock` provider plus `setup`, `wizard`, `init`, `quickstart`, scenario templates with tags/risk/dependencies, connector diagnostics, MCP doctor/test, task packs, workflow packs, `workflow init/doctor/validate/explain/plan/run workflow.yml`, `config doctor`, `runs explain`, advice-only `runs triage` / `runs inspect` / `runs fix` / `runs bundle`, run notes, `traces open`, experimental OTel JSON export, `report latest`, `report trend`, `report costs`, static dashboard, read-only local console, federation graph export, and a light Python `AgentApp` facade for zero-credential onboarding and faster failure triage.
 - MCP-first browser automation through `browser.enabled: true`, which mounts Playwright MCP as a stdio MCP server, approval-gates sensitive browser actions by default, and exposes browser doctor/artifact inspection plus audit-focused `browser seo`, `browser a11y`, and `browser links` planning commands.
 - A2A-style remote federation with durable task state and signed callback verification.
 - Practical `official_source_search` skill support for source-prioritized search and fetched-page extraction.
@@ -179,13 +179,26 @@ uv run easy-agent new competitor-research-agent
 uv run easy-agent new github-issue-agent
 uv run easy-agent new website-audit-agent
 uv run easy-agent new daily-report-agent
+uv run easy-agent new api-regression-agent
+uv run easy-agent new website-release-check-agent
+uv run easy-agent new incident-review-agent
+uv run easy-agent new weekly-report-agent
+uv run easy-agent new github-pr-review-agent
+uv run easy-agent new data-quality-agent
 uv run easy-agent new meeting-notes-agent
 uv run easy-agent new content-pipeline-agent
 uv run easy-agent new customer-support-agent
 uv run easy-agent connectors doctor -c easy-agent.yml
+uv run easy-agent mcp doctor -c easy-agent.yml
+uv run easy-agent mcp test <server> -c easy-agent.yml
+uv run easy-agent template list --tag browser --format json
+uv run easy-agent template show website-release-check-agent
+uv run easy-agent template recommend --goal "website release SEO audit"
 uv run easy-agent workflow list
 uv run easy-agent workflow init browser-audit --output workflow.yml --context "Audit the home page"
 uv run easy-agent workflow doctor workflow.yml -c easy-agent.yml
+uv run easy-agent workflow validate workflow.yml -c easy-agent.yml --strict
+uv run easy-agent workflow explain workflow.yml -c easy-agent.yml
 uv run easy-agent workflow plan workflow.yml -c easy-agent.yml
 uv run easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
 uv run easy-agent workflow run browser-qa -c easy-agent.yml --dry-run --context "Check the home page"
@@ -200,12 +213,18 @@ uv run easy-agent browser a11y https://example.com -c easy-agent.yml
 uv run easy-agent browser links https://example.com -c easy-agent.yml
 uv run easy-agent browser artifacts -c easy-agent.yml
 uv run easy-agent runs inspect <run_id> -c easy-agent.yml
+uv run easy-agent runs inspect <run_id> -c easy-agent.yml --format html --output inspect.html
+uv run easy-agent runs notes add <run_id> "handoff note" -c easy-agent.yml
+uv run easy-agent runs notes list <run_id> -c easy-agent.yml
 uv run easy-agent runs triage <run_id> -c easy-agent.yml
 uv run easy-agent runs bundle <run_id> -c easy-agent.yml --output run-bundle
 uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent report latest -c easy-agent.yml --html --output report.html
 uv run easy-agent report trend --history reports --html --output trend.html
+uv run easy-agent report costs -c easy-agent.yml --html --output costs.html
+uv run easy-agent federation graph -c easy-agent.yml --format html --output federation.html
 uv run easy-agent dashboard -c easy-agent.yml --output dashboard.html
+uv run easy-agent console -c easy-agent.yml --dry-run
 uv run easy-agent init --provider mock
 uv run easy-agent --help
 uv run easy-agent doctor -c easy-agent.yml
@@ -258,12 +277,12 @@ The real-network matrix is still summarized by score here, but the report now al
 
 The next reinforcement track is documented in full at [reference/en/next-reinforcement.md](./reference/en/next-reinforcement.md). The near-term focus remains:
 
-- using the shipped structured trace tree, `traces open`, `report latest`, `report trend`, standalone report HTML, and experimental `--otel-json` export as the main debugging surface while keeping the native trace tree as source of truth
-- keeping zero-credential onboarding strict through guided setup and wizard preflight checks, config explanation, connector diagnostics, workflow YAML doctor/plan/run, browser smoke/snapshot/audit/seo/a11y/links/report helpers, browser doctor/artifact inspection, task packs, static dashboard workflow/template recommendations, advice-only triage/inspect/fix/bundle packages, Python `AgentApp` workflow/browser/bundle helpers, and business templates for coding, research, data, ops, browser automation, web monitoring, SEO, website audits, GitHub issue triage, daily reporting, competitor research, meeting notes, content pipelines, support, sales, documents, QA, and release checks
+- using the shipped structured trace tree, `traces open`, `report latest`, `report trend`, `report costs`, standalone report HTML, and expanded experimental `--otel-json` export as the main debugging surface while keeping the native trace tree as source of truth
+- keeping zero-credential onboarding strict through guided setup and wizard preflight checks, config explanation, connector diagnostics, MCP doctor/test, workflow YAML doctor/validate/explain/plan/run, browser smoke/snapshot/audit/seo/a11y/links/report helpers, browser doctor/artifact inspection, task packs, static dashboard workflow/template recommendations, read-only local console, advice-only triage/inspect/fix/bundle packages, run notes, Python `AgentApp` workflow/browser/bundle/dashboard/cost helpers, and business templates for coding, research, data, ops, browser automation, web monitoring, SEO, website audits, website release checks, API regression, incident review, GitHub issue and PR triage, daily and weekly reporting, data quality, competitor research, meeting notes, content pipelines, support, sales, documents, QA, and release checks
 - widening the shipped live provider-compatibility matrix beyond the required DeepSeek/OpenAI-compatible baseline, including optional Anthropic and Gemini evidence when credentials are present
 - promoting the new official-source search plus BrowseComp or SimpleQA path into refreshed scored slices once official dataset exports and grader credentials are available
 - expanding live `/responses` compatibility coverage where OpenAI-compatible providers actually expose it, while keeping single-tool enforcement explicitly labeled as best effort when providers do not honor it strictly
-- deepening MCP notification parity, A2A federation demos, and local skill/plugin catalog workflows while keeping local/private connectivity, approvals, and network boundaries owned by the runtime
+- deepening MCP notification parity, A2A federation graph/demo evidence, local skill/plugin catalog workflows, and read-only operator views while keeping local/private connectivity, approvals, and network boundaries owned by the runtime
 
 ## Design References
 

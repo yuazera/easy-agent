@@ -40,6 +40,12 @@ uv run easy-agent new competitor-research-agent
 uv run easy-agent new github-issue-agent
 uv run easy-agent new website-audit-agent
 uv run easy-agent new daily-report-agent
+uv run easy-agent new api-regression-agent
+uv run easy-agent new website-release-check-agent
+uv run easy-agent new incident-review-agent
+uv run easy-agent new weekly-report-agent
+uv run easy-agent new github-pr-review-agent
+uv run easy-agent new data-quality-agent
 uv run easy-agent new meeting-notes-agent
 uv run easy-agent new content-pipeline-agent
 uv run easy-agent new customer-support-agent
@@ -50,6 +56,9 @@ uv run easy-agent new release-agent
 uv run easy-agent init --provider mock
 uv run easy-agent quickstart --provider mock
 uv run easy-agent template list
+uv run easy-agent template list --tag browser --format json
+uv run easy-agent template show website-release-check-agent
+uv run easy-agent template recommend --goal "website release SEO audit"
 uv run easy-agent template create basic-agent <target-dir>
 uv run easy-agent config validate -c easy-agent.yml
 uv run easy-agent config explain -c easy-agent.yml
@@ -63,6 +72,10 @@ uv run easy-agent runs show <run_id> -c easy-agent.yml
 uv run easy-agent runs explain <run_id> -c easy-agent.yml
 uv run easy-agent runs triage <run_id> -c easy-agent.yml
 uv run easy-agent runs inspect <run_id> -c easy-agent.yml
+uv run easy-agent runs inspect <run_id> -c easy-agent.yml --format markdown --output inspect.md
+uv run easy-agent runs inspect <run_id> -c easy-agent.yml --format html --output inspect.html
+uv run easy-agent runs notes add <run_id> "handoff note" -c easy-agent.yml
+uv run easy-agent runs notes list <run_id> -c easy-agent.yml
 uv run easy-agent runs fix <run_id> -c easy-agent.yml --format markdown --output fix.md
 uv run easy-agent runs fix <run_id> -c easy-agent.yml --format html --output fix.html
 uv run easy-agent runs bundle <run_id> -c easy-agent.yml --output run-bundle
@@ -73,7 +86,9 @@ uv run easy-agent traces export <run_id> -c easy-agent.yml --otel-json --output 
 uv run easy-agent report latest -c easy-agent.yml
 uv run easy-agent report latest -c easy-agent.yml --html --output report.html
 uv run easy-agent report trend --history reports --html --output trend.html
+uv run easy-agent report costs -c easy-agent.yml --html --output costs.html
 uv run easy-agent dashboard -c easy-agent.yml --output dashboard.html
+uv run easy-agent console -c easy-agent.yml --dry-run
 uv run easy-agent connectors list -c easy-agent.yml
 uv run easy-agent connectors doctor -c easy-agent.yml
 uv run easy-agent connectors test model -c easy-agent.yml
@@ -91,6 +106,8 @@ uv run easy-agent workflow list
 uv run easy-agent workflow init browser-audit --output workflow.yml --context "Audit the home page"
 uv run easy-agent workflow show browser-qa
 uv run easy-agent workflow doctor workflow.yml -c easy-agent.yml
+uv run easy-agent workflow validate workflow.yml -c easy-agent.yml --strict
+uv run easy-agent workflow explain workflow.yml -c easy-agent.yml
 uv run easy-agent workflow plan workflow.yml -c easy-agent.yml
 uv run easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
 uv run easy-agent workflow run browser-qa -c easy-agent.yml --dry-run --context "Check the home page"
@@ -102,6 +119,8 @@ uv run easy-agent skills catalog list
 uv run easy-agent skills catalog install python_echo --target skills/installed --force
 uv run easy-agent plugins doctor -c easy-agent.yml
 uv run easy-agent integration federation-demo -c easy-agent.yml
+uv run easy-agent mcp doctor -c easy-agent.yml
+uv run easy-agent mcp test <server> -c easy-agent.yml
 uv run easy-agent mcp resources list <server> -c easy-agent.yml
 uv run easy-agent mcp resources read <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources templates <server> -c easy-agent.yml
@@ -109,6 +128,8 @@ uv run easy-agent mcp resources subscribe <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp resources unsubscribe <server> <uri> -c easy-agent.yml
 uv run easy-agent mcp prompts list <server> -c easy-agent.yml
 uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"notes"}' -c easy-agent.yml
+uv run easy-agent federation graph -c easy-agent.yml --format mermaid
+uv run easy-agent federation graph -c easy-agent.yml --format html --output federation.html
 ```
 
 ## 上手流程
@@ -121,6 +142,9 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `quickstart --provider mock` 会创建一个临时本地配置，运行一次确定性的工具调用 agent，并输出新 run id 对应的 `runs show`、`runs explain` 与 `traces export` 后续命令。
 - `new <scenario> [target-dir]` 是最短的项目创建路径。它包装 `template create`，默认把目标目录设为 scenario 名称，同时保留旧的 template 命令。
 - `template list` 展示可用 starter 项目形态。
+- `template list --tag <tag> --risk <risk> --format json` 会按模板 metadata 过滤本地模板市场。
+- `template show <name>` 会展示单个 starter 的 tags、risk、dependencies、recommended workflow、smoke commands 与 next commands。
+- `template recommend --goal "<goal>"` 用本地关键词匹配给 starter 排序，让用户可以从意图出发，而不是先通读整个 catalog。
 - `template create basic-agent <target-dir>` 创建最小单 agent 项目。
 - `template create human-approval-agent <target-dir>` 创建同样的本地 starter，并把 `python_echo` 标为敏感工具。
 - `template create longrun-harness <target-dir>` 创建最小 initializer / worker / evaluator harness。
@@ -139,6 +163,12 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `template create github-issue-agent <target-dir>` 创建 issue triage starter，覆盖复现说明、范围化修复、测试与 evidence bundle 交接。
 - `template create website-audit-agent <target-dir>` 创建 MCP-first website audit starter，覆盖 SEO、accessibility、links 与 browser evidence。
 - `template create daily-report-agent <target-dir>` 创建日报/指标 starter，用于 observed changes、blockers、owners 与 next actions。
+- `template create api-regression-agent <target-dir>` 创建 API 回归 starter，用于 endpoint checks、contract drift 与 release gates。
+- `template create website-release-check-agent <target-dir>` 创建 browser-backed website release checker，用于 smoke、SEO、accessibility 与 link risk。
+- `template create incident-review-agent <target-dir>` 创建 incident review starter，用于 timeline、impact、cause 与 action tracking。
+- `template create weekly-report-agent <target-dir>` 创建周报 starter，用于 evidence、trends、risks 与 priorities。
+- `template create github-pr-review-agent <target-dir>` 创建 PR review starter，用于 code risk、tests、docs 与 release notes。
+- `template create data-quality-agent <target-dir>` 创建 data quality starter，用于 schema drift、missing values 与 metric anomalies。
 - `template create meeting-notes-agent <target-dir>` 创建会议摘要、决策、负责人和后续事项 starter。
 - `template create content-pipeline-agent <target-dir>` 创建内容 brief、draft、review 与 publishing checklist starter。
 - `template create customer-support-agent <target-dir>` 创建面向 support triage 与回复草拟的 starter。
@@ -161,6 +191,8 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `runs explain <run_id>` 会归类常见失败原因，包括 provider 凭据缺失、schema validation failure、guardrail block、MCP failure、iteration loop，以及 Windows cleanup warning。
 - `runs triage <run_id>` 会把 `runs explain` 与 repair-package classifier 包成一个 advice-only operator view，输出 severity、actionability、selected task pack、approval/browser flags、retry advice、evidence count 与 next commands；它不会修改文件，也不会重新运行 agent。
 - `runs inspect <run_id>` 是统一的只读诊断入口，会合并 run summary、explanation、triage、fix-package summary、trace counts、browser readiness/artifacts、bundle command 与 next commands。只有显式传 `--bundle` 时才会写 evidence bundle。
+- `runs inspect <run_id> --format markdown|html --output <path>` 会写出可交接的 inspection package，包含 diagnostic code、cost summary、notes、repair prompt 与 next commands。
+- `runs notes add|list <run_id>` 会把本地交接备注绑定到 durable run，并在后续 inspection 中继续展示。
 - `runs fix <run_id>` 会生成 advice-only 修复包。它复用已存储的 run explanation，自动选择 `bug-fix`、`release-check` 或 `browser-qa` 等内置 task pack，列出安全下一步命令，并可以输出 JSON、Markdown 或单文件 HTML；该命令不会修改文件，也不会重新运行 agent。
 - `runs bundle <run_id>` 会写出 advice-only evidence 目录，包含 run summary、triage JSON、fix Markdown/HTML、trace-tree JSON/HTML、browser artifact inventory、可用时复制的 browser artifacts，以及本地 README。它用于 handoff/debugging，不做自动修复。
 - `traces export <run_id>` 默认返回结构化 trace tree。
@@ -186,6 +218,10 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 
 `report trend` 会比较某个目录下的本地 report artifacts，并展示 benchmark、public-eval、real-network 的 latest score、previous score 与 score delta。使用 `--html --output trend.html` 可以生成单文件趋势页。
 
+`report costs` 会从已存储 trace 中汇总 best-effort run cost 与 reliability 证据：run count、failed count、model/tool/MCP spans、retries、duration 与 failure layers。缺少 token usage 时不会伪造 token 成本。
+
+`console --dry-run` 会打印只读本地 console endpoint。不带 `--dry-run` 时，它通过 Python 标准库提供同一份 dashboard HTML，不暴露 mutation endpoint。
+
 Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_id`、`parent_span_id`、`kind`、`status`、duration、input/output hash、retry count、checkpoint id 与 child spans。这样当前 JSON trace 仍然轻量，同时为后续 OpenTelemetry export 留出路径。
 
 ## Connectors 与 Task Packs
@@ -201,12 +237,18 @@ Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_
 - `browser seo <url>`、`browser a11y <url>` 与 `browser links <url>` 是更聚焦的审计 plan，分别面向页面 metadata/content、accessibility-tree 风险与 link quality。它们继续保持 Playwright MCP-first，并且默认 plan-only，除非显式传 `--run`。
 - `browser report <run_id>` 会把 run triage、browser doctor 和 browser artifacts 合成一个 browser-related run 的证据视图。
 - `browser artifacts` 只扫描当前 browser artifact directory，不启动 Playwright MCP；它会把截图、snapshot、video、archive、network capture、log 和其他文件分类，方便在 rerun 前检查 browser failure 证据。
-- `workflow list|show|init|doctor|plan|run` 把 task packs 暴露成 guided workflow packs。`workflow init <pack> --output workflow.yml` 会写出最小 versioned workflow 文件，包含 `pack`、`context`、`approval_mode` 与 `bundle_on_completion`。`workflow doctor workflow.yml` 做静态 YAML 与 connector 检查，`workflow plan workflow.yml` 在不执行的情况下渲染 prompt 与 acceptance criteria，`workflow run workflow.yml --dry-run` 继续作为进入 model-backed execution 前的 prompt/preflight 检查路径。
+- `workflow list|show|init|doctor|validate|explain|plan|run` 把 task packs 暴露成 guided workflow packs。`workflow init <pack> --output workflow.yml` 会写出最小 versioned workflow 文件，包含 `pack`、`context`、`approval_mode` 与 `bundle_on_completion`。`workflow doctor workflow.yml` 做静态 YAML 与 connector 检查，`workflow validate --strict` 会把 warning 升级为失败，`workflow explain workflow.yml` 会解释风险和预期行为，`workflow plan workflow.yml` 在不执行的情况下渲染 prompt 与 acceptance criteria，`workflow run workflow.yml --dry-run` 继续作为进入 model-backed execution 前的 prompt/preflight 检查路径。
 - `task list` 展示内置 task packs。
 - `task show <pack>` 输出 prompt template、recommended scenario 与 acceptance criteria。
 - `task run <pack>` 会把任务渲染后交给当前配置的 entrypoint。使用 `--dry-run` 可先检查 prompt。
 
 当前内置 task packs 包括 `repo-review`、`bug-fix`、`docs-refresh`、`release-check`、`data-summary`、`federation-loopback-demo`、`browser-qa`、`browser-research`、`browser-form-check` 与 `browser-audit`。
+
+## MCP 与 Federation 操作
+
+- `mcp doctor` 做静态 MCP command、roots、URL 与 auth 检查，不启动 server。
+- `mcp test <server>` 默认是静态模式；只有显式传 `--live` 时才会启动已配置 MCP server 并列出 tools。
+- `federation graph --format json|mermaid|html` 会渲染本地 remotes、exports 与最近 durable task state，不调用远端 agent。
 
 ## Python Facade
 
@@ -220,9 +262,14 @@ try:
     result = app.run("Summarize this task")
     task_result = app.run_task("repo-review", context="Focus on tests")
     workflow = app.workflow_plan("workflow.yml")
+    doctor = app.workflow_doctor("workflow.yml")
     browser_plan = app.browser_audit("https://example.com", kind="seo")
+    inspection = app.inspect(str(result["run_id"]))
+    app.add_note(str(result["run_id"]), "handoff note")
     report = app.report()
+    costs = app.costs()
     trace = app.trace(str(result["run_id"]))
+    dashboard = app.dashboard("dashboard.html")
     bundle = app.run_bundle(str(result["run_id"]), output_dir="run-bundle")
 finally:
     app.close()

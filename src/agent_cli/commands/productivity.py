@@ -203,6 +203,56 @@ def plan_workflow(
     _print_workflow_payload(payload, output_format)
 
 
+@workflow_app.command('explain')
+def explain_workflow(
+    workflow: str = typer.Argument(..., help='Workflow YAML path.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    doctor = _workflow_doctor_payload(workflow, config)
+    if doctor['status'] == 'error':
+        _print_workflow_doctor_payload(doctor, output_format)
+        raise typer.Exit(1)
+    plan = _workflow_plan_payload(workflow, config, dry_run=True)
+    raw_checks = doctor.get('checks')
+    checks: list[Any] = raw_checks if isinstance(raw_checks, list) else []
+    browser_related = str(plan.get('pack') or '').startswith('browser-')
+    payload = {
+        'workflow_path': workflow,
+        'status': doctor['status'],
+        'pack': plan['pack'],
+        'description': plan['description'],
+        'approval_mode': plan['approval_mode'],
+        'browser_related': browser_related,
+        'risk': 'medium' if browser_related else 'low',
+        'summary': (
+            f"Runs task pack '{plan['pack']}' with approval_mode={plan['approval_mode']}."
+            f" {'Browser connector readiness should be checked first.' if browser_related else 'No browser connector is required by the selected pack.'}"
+        ),
+        'warnings': [item for item in checks if isinstance(item, dict) and item.get('status') == 'warn'],
+        'acceptance_criteria': plan['acceptance_criteria'],
+        'next_commands': plan['next_commands'],
+    }
+    _print_workflow_explain_payload(payload, output_format)
+
+
+@workflow_app.command('validate')
+def validate_workflow(
+    workflow: str = typer.Argument(..., help='Workflow YAML path.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    strict: bool = typer.Option(False, '--strict', help='Treat warnings as validation failures.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    payload = _workflow_doctor_payload(workflow, config)
+    if strict and payload['status'] == 'warn':
+        payload = {**payload, 'status': 'error', 'strict': True}
+    else:
+        payload = {**payload, 'strict': strict}
+    _print_workflow_doctor_payload(payload, output_format)
+    if payload['status'] == 'error':
+        raise typer.Exit(1)
+
+
 @workflow_app.command('init')
 def init_workflow(
     pack: str = typer.Argument(..., help='Workflow pack name.'),
@@ -553,6 +603,22 @@ def _print_workflow_doctor_payload(payload: dict[str, Any], output_format: str) 
     console.print(table)
 
 
+def _print_workflow_explain_payload(payload: dict[str, Any], output_format: str) -> None:
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f"workflow explain: {payload['workflow_path']}")
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    for key in ['status', 'pack', 'description', 'approval_mode', 'risk', 'summary']:
+        table.add_row(key, str(payload.get(key)))
+    table.add_row('acceptance_criteria', '\n'.join(str(item) for item in payload.get('acceptance_criteria', [])))
+    table.add_row('next_commands', '\n'.join(str(item) for item in payload.get('next_commands', [])))
+    console.print(table)
+
+
 def _workflow_next_commands(pack: str, *, run_id: str | None = None) -> list[str]:
     commands = [
         'easy-agent connectors doctor -c easy-agent.yml',
@@ -562,7 +628,7 @@ def _workflow_next_commands(pack: str, *, run_id: str | None = None) -> list[str
         commands.insert(1, 'easy-agent browser doctor -c easy-agent.yml')
         commands.insert(2, 'easy-agent browser artifacts -c easy-agent.yml')
     if run_id:
-        commands.insert(0, f'easy-agent runs triage {run_id} -c easy-agent.yml')
+        commands.insert(0, f'easy-agent runs inspect {run_id} -c easy-agent.yml')
         commands.insert(1, f'easy-agent traces open {run_id} -c easy-agent.yml --no-browser')
     return commands
 

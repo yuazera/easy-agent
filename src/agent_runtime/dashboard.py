@@ -12,7 +12,7 @@ from agent_runtime.connectors import (
     connector_checks,
     connector_summary,
 )
-from agent_runtime.reports import build_report_trend, latest_report_payload
+from agent_runtime.reports import build_cost_report, build_report_trend, latest_report_payload
 from agent_runtime.runtime import build_runtime
 
 
@@ -56,6 +56,7 @@ def dashboard_payload(
             'doctor': browser_doctor(config),
             'artifacts': browser_artifacts(config, limit=12),
         },
+        'costs': build_cost_report(config, run_limit=run_limit),
         'suggested_next_steps': _suggested_next_steps(latest, checks, attention, pending, browser_doctor(config)),
         'workflow_recommendations': _workflow_recommendations(latest, checks, attention, browser_doctor(config)),
         'template_recommendations': _template_recommendations(latest, checks, attention, browser_doctor(config)),
@@ -80,6 +81,7 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     template_recommendations: list[Any] = raw_template_recommendations if isinstance(raw_template_recommendations, list) else []
     approvals = cast(dict[str, Any], payload.get('approvals') if isinstance(payload.get('approvals'), dict) else {})
     browser = cast(dict[str, Any], payload.get('browser') if isinstance(payload.get('browser'), dict) else {})
+    costs = cast(dict[str, Any], payload.get('costs') if isinstance(payload.get('costs'), dict) else {})
     trend = cast(dict[str, Any], payload.get('trend') if isinstance(payload.get('trend'), dict) else {})
     raw_json = escape(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
@@ -96,6 +98,7 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     pending_count = len(pending_items)
     trend_cards = ''.join(_trend_card(name, item if isinstance(item, dict) else {}) for name, item in cast(dict[str, Any], trend.get('surfaces') if isinstance(trend.get('surfaces'), dict) else {}).items())
     browser_html = _browser_section(browser)
+    cost_summary = escape(json.dumps(costs.get('summary', {}), ensure_ascii=False, indent=2, default=str))
 
     return f"""<!doctype html>
 <html lang="en">
@@ -181,6 +184,10 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     <section>
       <h2>Trend</h2>
       <div class="grid">{trend_cards or '<p class="muted">No trend points available.</p>'}</div>
+    </section>
+    <section>
+      <h2>Cost and Reliability</h2>
+      <pre>{cost_summary}</pre>
     </section>
     <section>
       <h2>Connectors</h2>

@@ -159,6 +159,8 @@ browser:
     )
     doctor = CliRunner().invoke(app, ['workflow', 'doctor', str(workflow_file), '-c', str(browser_config), '--format', 'json'])
     plan = CliRunner().invoke(app, ['workflow', 'plan', str(workflow_file), '-c', str(browser_config), '--format', 'json'])
+    explained = CliRunner().invoke(app, ['workflow', 'explain', str(workflow_file), '-c', str(browser_config), '--format', 'json'])
+    validated = CliRunner().invoke(app, ['workflow', 'validate', str(workflow_file), '-c', str(browser_config), '--format', 'json'])
     file_dry = CliRunner().invoke(app, ['workflow', 'run', str(workflow_file), '-c', str(browser_config), '--dry-run', '--format', 'json'])
     dry = CliRunner().invoke(app, ['workflow', 'run', 'browser-qa', '-c', str(browser_config), '--dry-run', '--context', 'home page', '--format', 'json'])
     run = CliRunner().invoke(app, ['workflow', 'run', 'repo-review', '-c', str(config), '--context', 'focus tests', '--format', 'json'])
@@ -188,6 +190,10 @@ browser:
     assert plan.exit_code == 0
     assert '"doctor"' in plan.output
     assert '"pack": "browser-audit"' in plan.output
+    assert explained.exit_code == 0
+    assert '"browser_related": true' in explained.output
+    assert validated.exit_code == 0
+    assert '"status": "ok"' in validated.output
     assert file_dry.exit_code == 0
     assert '"pack": "browser-audit"' in file_dry.output
     assert 'title, meta description' in file_dry.output
@@ -212,6 +218,59 @@ browser:
     assert 'link-quality' in links.output
     assert report.exit_code == 0
     assert '"likely_layer": "browser_mcp"' in report.output
+
+
+def test_mcp_doctor_static_test_and_federation_graph(tmp_path: Path) -> None:
+    config = tmp_path / 'easy-agent.yml'
+    storage_path = str(tmp_path / 'state').replace('\\', '/')
+    config.write_text(
+        f"""
+model:
+  provider: mock
+  protocol: mock
+  model: mock-agent
+  base_url: mock://local
+  api_key_env: EASY_AGENT_MOCK_API_KEY
+graph:
+  entrypoint: assistant
+  agents:
+    - name: assistant
+mcp:
+  - name: files
+    transport: stdio
+    command: [python, --version]
+    roots:
+      - path: /
+        uri: file:///
+        name: root
+federation:
+  remotes:
+    - name: loopback
+      base_url: http://127.0.0.1:9999/a2a
+  exports:
+    - name: assistant_export
+      target_type: agent
+      target: assistant
+storage:
+  path: {storage_path}
+  database: state.db
+""",
+        encoding='utf-8',
+    )
+
+    mcp_doctor = CliRunner().invoke(app, ['mcp', 'doctor', '-c', str(config), '--format', 'json'])
+    mcp_test = CliRunner().invoke(app, ['mcp', 'test', 'files', '-c', str(config), '--format', 'json'])
+    graph_json = CliRunner().invoke(app, ['federation', 'graph', '-c', str(config), '--format', 'json'])
+    graph_mermaid = CliRunner().invoke(app, ['federation', 'graph', '-c', str(config), '--format', 'mermaid'])
+
+    assert mcp_doctor.exit_code == 0
+    assert '"files"' in mcp_doctor.output
+    assert mcp_test.exit_code == 0
+    assert '"mode": "static"' in mcp_test.output
+    assert graph_json.exit_code == 0
+    assert '"assistant_export"' in graph_json.output
+    assert graph_mermaid.exit_code == 0
+    assert 'graph LR' in graph_mermaid.output
 
 
 def test_skill_catalog_and_plugins_doctor(tmp_path: Path) -> None:

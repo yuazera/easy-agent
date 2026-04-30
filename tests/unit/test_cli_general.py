@@ -430,9 +430,27 @@ storage:
     assert '"severity": "high"' in triage_result.output
     assert '"can_retry": true' in triage_result.output
     inspect_result = CliRunner().invoke(app, ['runs', 'inspect', 'run_fix', '-c', str(config_path), '--format', 'json'])
+    inspect_md_path = tmp_path / 'inspect.md'
+    inspect_html_path = tmp_path / 'inspect.html'
+    inspect_markdown = CliRunner().invoke(app, ['runs', 'inspect', 'run_fix', '-c', str(config_path), '--format', 'markdown', '--output', str(inspect_md_path)])
+    inspect_html = CliRunner().invoke(app, ['runs', 'inspect', 'run_fix', '-c', str(config_path), '--format', 'html', '--output', str(inspect_html_path)])
+    note_add = CliRunner().invoke(app, ['runs', 'notes', 'add', 'run_fix', 'reviewed failure', '-c', str(config_path), '--format', 'json'])
+    note_list = CliRunner().invoke(app, ['runs', 'notes', 'list', 'run_fix', '-c', str(config_path), '--format', 'json'])
     assert inspect_result.exit_code == 0
     assert '"fix_summary"' in inspect_result.output
     assert '"bundle_command"' in inspect_result.output
+    assert '"diagnostic_code"' in inspect_result.output
+    assert '"cost_summary"' in inspect_result.output
+    assert inspect_markdown.exit_code == 0
+    assert inspect_md_path.exists()
+    assert 'easy-agent run inspection: run_fix' in inspect_md_path.read_text(encoding='utf-8')
+    assert inspect_html.exit_code == 0
+    assert inspect_html_path.exists()
+    assert '<!doctype html>' in inspect_html_path.read_text(encoding='utf-8')
+    assert note_add.exit_code == 0
+    assert '"reviewed failure"' in note_add.output
+    assert note_list.exit_code == 0
+    assert '"notes"' in note_list.output
     assert markdown_result.exit_code == 0
     assert markdown_path.exists()
     assert '# easy-agent run fix: run_fix' in markdown_path.read_text(encoding='utf-8')
@@ -522,10 +540,14 @@ storage:
         asyncio.run(runtime.aclose())
 
     output_path = tmp_path / 'dashboard.html'
+    costs_path = tmp_path / 'costs.html'
     result = CliRunner().invoke(
         app,
         ['dashboard', '-c', str(config_path), '--history', str(tmp_path), '--output', str(output_path), '--format', 'json'],
     )
+    costs = CliRunner().invoke(app, ['report', 'costs', '-c', str(config_path), '--format', 'json'])
+    costs_html = CliRunner().invoke(app, ['report', 'costs', '-c', str(config_path), '--html', '--output', str(costs_path)])
+    console = CliRunner().invoke(app, ['console', '-c', str(config_path), '--history', str(tmp_path), '--dry-run'])
 
     assert result.exit_code == 0
     assert output_path.exists()
@@ -544,4 +566,12 @@ storage:
     assert 'runs inspect run_failed_dash' in html
     assert 'runs bundle run_failed_dash' in html
     assert 'runs fix run_failed_dash' in html
+    assert 'Cost and Reliability' in html
+    assert costs.exit_code == 0
+    assert '"tool_spans"' in costs.output
+    assert costs_html.exit_code == 0
+    assert costs_path.exists()
+    assert 'cost and reliability' in costs_path.read_text(encoding='utf-8')
+    assert console.exit_code == 0
+    assert '"mode": "read_only"' in console.output
     assert 'workflow init bug-fix' in html

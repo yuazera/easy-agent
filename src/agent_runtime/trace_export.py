@@ -21,6 +21,11 @@ def trace_tree_to_otel_json(payload: dict[str, Any]) -> dict[str, Any]:
                 'easy_agent.checkpoint_id': item.get('checkpoint_id'),
                 'easy_agent.input_hash': item.get('input_hash'),
                 'easy_agent.output_hash': item.get('output_hash'),
+                'gen_ai.operation.name': _gen_ai_operation_name(item),
+                'gen_ai.provider.name': run.get('model_provider') or run.get('provider'),
+                'gen_ai.agent.name': _agent_name(item),
+                'gen_ai.tool.name': _tool_name(item),
+                'error.type': _error_type(item),
             }
         )
         otel_spans.append(
@@ -59,3 +64,42 @@ def trace_tree_to_otel_json(payload: dict[str, Any]) -> dict[str, Any]:
             }
         ],
     }
+
+
+def _gen_ai_operation_name(item: dict[str, Any]) -> str:
+    kind = str(item.get('kind') or '').lower()
+    if kind in {'model', 'llm'}:
+        return 'chat'
+    if kind == 'agent':
+        return 'agent'
+    if kind in {'tool', 'mcp'}:
+        return 'execute_tool'
+    if kind == 'guardrail':
+        return 'guardrail'
+    return kind or 'runtime'
+
+
+def _agent_name(item: dict[str, Any]) -> str | None:
+    if str(item.get('kind') or '').lower() == 'agent':
+        return str(item.get('name') or '') or None
+    return None
+
+
+def _tool_name(item: dict[str, Any]) -> str | None:
+    if str(item.get('kind') or '').lower() not in {'tool', 'mcp'}:
+        return None
+    return str(item.get('name') or '') or None
+
+
+def _error_type(item: dict[str, Any]) -> str | None:
+    status = str(item.get('status') or '').lower()
+    if status not in {'failed', 'error', 'interrupted'}:
+        return None
+    raw_events = (item.get('attributes') or {}).get('events') if isinstance(item.get('attributes'), dict) else None
+    events = raw_events if isinstance(raw_events, list) else []
+    for event in reversed(events):
+        if isinstance(event, dict):
+            kind = str(event.get('kind') or '')
+            if kind:
+                return kind
+    return status
