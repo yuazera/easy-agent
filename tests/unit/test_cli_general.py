@@ -424,6 +424,11 @@ storage:
     assert json_result.exit_code == 0
     assert '"mode": "advice_only"' in json_result.output
     assert '"selected_task_pack": "bug-fix"' in json_result.output
+    triage_result = CliRunner().invoke(app, ['runs', 'triage', 'run_fix', '-c', str(config_path), '--format', 'json'])
+    assert triage_result.exit_code == 0
+    assert '"mode": "advice_only"' in triage_result.output
+    assert '"severity": "high"' in triage_result.output
+    assert '"can_retry": true' in triage_result.output
     assert markdown_result.exit_code == 0
     assert markdown_path.exists()
     assert '# easy-agent run fix: run_fix' in markdown_path.read_text(encoding='utf-8')
@@ -511,6 +516,8 @@ storage:
     assert 'run_dash' in html
     assert 'Needs Attention' in html
     assert 'Approvals' in html
+    assert 'Suggested Next Steps' in html
     assert 'Browser' in html
     assert 'run_failed_dash' in html
+    assert 'runs triage run_failed_dash' in html
     assert 'runs fix run_failed_dash' in html

@@ -10,7 +10,7 @@ from rich.table import Table
 
 from agent_cli.shared import with_runtime
 from agent_common.models import HumanLoopMode
-from agent_runtime import EasyAgentRuntime
+from agent_runtime import EasyAgentRuntime, build_runtime
 from agent_runtime.connectors import (
     browser_artifacts,
     browser_doctor,
@@ -19,6 +19,7 @@ from agent_runtime.connectors import (
     connector_summary,
     test_connector,
 )
+from agent_runtime.diagnostics import build_triage_package
 from agent_runtime.tasks import (
     get_task_pack,
     list_task_packs,
@@ -30,6 +31,7 @@ console = Console()
 connectors_app = typer.Typer(help='Inspect configured external connectors.')
 task_app = typer.Typer(help='Run built-in task packs.')
 browser_app = typer.Typer(help='Inspect MCP-first browser workflow readiness.')
+workflow_app = typer.Typer(help='Run guided workflow packs.')
 
 
 @connectors_app.command('list')
@@ -143,6 +145,75 @@ def run_task(
     asyncio.run(with_runtime(config, _run))
 
 
+@workflow_app.command('list')
+def list_workflows(output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.')) -> None:
+    packs = [task_pack_payload(pack) for pack in list_task_packs()]
+    if output_format == 'json':
+        console.print_json(json.dumps({'workflows': packs}, ensure_ascii=False))
+        return
+    table = Table(title='easy-agent workflow packs')
+    table.add_column('Name', style='cyan')
+    table.add_column('Recommended Scenario', style='green')
+    table.add_column('Description')
+    for pack in packs:
+        table.add_row(str(pack['name']), str(pack['recommended_scenario']), str(pack['description']))
+    console.print(table)
+
+
+@workflow_app.command('show')
+def show_workflow(
+    pack: str = typer.Argument(..., help='Workflow pack name.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    payload = task_pack_payload(get_task_pack(pack))
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    console.print_json(json.dumps(payload, ensure_ascii=False))
+
+
+@workflow_app.command('run')
+def run_workflow(
+    pack: str = typer.Argument(..., help='Workflow pack name.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    context: str | None = typer.Option(None, '--context', help='Additional workflow context.'),
+    session_id: str | None = typer.Option(None, '--session-id'),
+    approval_mode: str = typer.Option('hybrid', '--approval-mode'),
+    dry_run: bool = typer.Option(False, '--dry-run', help='Render the workflow plan without running the agent.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    pack_info = task_pack_payload(get_task_pack(pack))
+    prompt = render_task_prompt(pack, context)
+    checks = connector_checks(config)
+    payload: dict[str, Any] = {
+        'pack': pack,
+        'description': pack_info['description'],
+        'recommended_scenario': pack_info['recommended_scenario'],
+        'acceptance_criteria': pack_info['acceptance_criteria'],
+        'prompt': prompt,
+        'dry_run': dry_run,
+        'preflight': [check.__dict__ for check in checks],
+        'next_commands': _workflow_next_commands(pack),
+    }
+    if dry_run:
+        _print_workflow_payload(payload, output_format)
+        return
+
+    async def _run(runtime: EasyAgentRuntime) -> None:
+        result: dict[str, Any] = await runtime.run(
+            prompt,
+            session_id=session_id,
+            approval_mode=HumanLoopMode(approval_mode),
+        )
+        payload['result'] = result
+        run_id = str(result.get('run_id') or '')
+        if run_id:
+            payload['next_commands'] = _workflow_next_commands(pack, run_id=run_id)
+        _print_workflow_payload(payload, output_format)
+
+    asyncio.run(with_runtime(config, _run))
+
+
 @browser_app.command('doctor')
 def doctor_browser(
     config: str = typer.Option('easy-agent.yml', '-c', '--config'),
@@ -188,4 +259,173 @@ def list_browser_artifacts(
         table.add_row(str(item['kind']), str(item['relative_path']), str(item['size_bytes']))
     if not payload['artifacts']:
         table.add_row('-', 'No browser artifacts found.', '-')
+    console.print(table)
+
+
+@browser_app.command('smoke')
+def smoke_browser(
+    url: str = typer.Argument(..., help='Target URL for the browser smoke plan.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    context: str | None = typer.Option(None, '--context', help='Additional browser smoke context.'),
+    run: bool = typer.Option(False, '--run', help='Run the generated browser-qa prompt through the configured runtime.'),
+    approval_mode: str = typer.Option('hybrid', '--approval-mode'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    _browser_plan_command('smoke', url, config, context=context, run=run, approval_mode=approval_mode, output_format=output_format)
+
+
+@browser_app.command('snapshot')
+def snapshot_browser(
+    url: str = typer.Argument(..., help='Target URL for the browser snapshot plan.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    context: str | None = typer.Option(None, '--context', help='Additional browser snapshot context.'),
+    run: bool = typer.Option(False, '--run', help='Run the generated browser-qa prompt through the configured runtime.'),
+    approval_mode: str = typer.Option('hybrid', '--approval-mode'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    _browser_plan_command('snapshot', url, config, context=context, run=run, approval_mode=approval_mode, output_format=output_format)
+
+
+@browser_app.command('report')
+def report_browser(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = {
+            'run_id': run_id,
+            'triage': build_triage_package(runtime.store, run_id),
+            'browser': {
+                'doctor': browser_doctor(config),
+                'artifacts': browser_artifacts(config, limit=20),
+            },
+            'next_commands': [
+                f'easy-agent runs triage {run_id} -c easy-agent.yml',
+                f'easy-agent traces open {run_id} -c easy-agent.yml --no-browser',
+                'easy-agent browser artifacts -c easy-agent.yml',
+            ],
+        }
+    finally:
+        asyncio.run(runtime.aclose())
+    _print_browser_payload(payload, output_format, title=f'browser report: {run_id}')
+
+
+def _workflow_next_commands(pack: str, *, run_id: str | None = None) -> list[str]:
+    commands = [
+        'easy-agent connectors doctor -c easy-agent.yml',
+        'easy-agent dashboard -c easy-agent.yml --output dashboard.html',
+    ]
+    if pack.startswith('browser-'):
+        commands.insert(1, 'easy-agent browser doctor -c easy-agent.yml')
+        commands.insert(2, 'easy-agent browser artifacts -c easy-agent.yml')
+    if run_id:
+        commands.insert(0, f'easy-agent runs triage {run_id} -c easy-agent.yml')
+        commands.insert(1, f'easy-agent traces open {run_id} -c easy-agent.yml --no-browser')
+    return commands
+
+
+def _print_workflow_payload(payload: dict[str, Any], output_format: str) -> None:
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f"workflow: {payload['pack']}")
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    for key in ['description', 'recommended_scenario', 'dry_run']:
+        table.add_row(key, str(payload.get(key)))
+    result = payload.get('result')
+    if isinstance(result, dict):
+        table.add_row('run_id', str(result.get('run_id') or '-'))
+        table.add_row('status', str(result.get('status') or '-'))
+    table.add_row('next_commands', '\n'.join(str(item) for item in payload.get('next_commands', [])))
+    console.print(table)
+    if payload.get('dry_run'):
+        console.print_json(json.dumps({'prompt': payload.get('prompt'), 'acceptance_criteria': payload.get('acceptance_criteria')}, ensure_ascii=False))
+
+
+def _browser_plan_command(
+    kind: str,
+    url: str,
+    config: str,
+    *,
+    context: str | None,
+    run: bool,
+    approval_mode: str,
+    output_format: str,
+) -> None:
+    browser_context = _browser_context(kind, url, context)
+    prompt = render_task_prompt('browser-qa', browser_context)
+    payload: dict[str, Any] = {
+        'kind': kind,
+        'url': url,
+        'mode': 'run' if run else 'plan_only',
+        'doctor': browser_doctor(config),
+        'prompt': prompt,
+        'next_commands': [
+            'easy-agent browser doctor -c easy-agent.yml',
+            'easy-agent connectors test browser -c easy-agent.yml',
+            'easy-agent browser artifacts -c easy-agent.yml',
+        ],
+    }
+    if not run:
+        _print_browser_payload(payload, output_format, title=f'browser {kind}')
+        return
+
+    async def _run(runtime: EasyAgentRuntime) -> None:
+        result: dict[str, Any] = await runtime.run(prompt, approval_mode=HumanLoopMode(approval_mode))
+        payload['result'] = result
+        run_id = str(result.get('run_id') or '')
+        if run_id:
+            payload['next_commands'] = [
+                f'easy-agent browser report {run_id} -c easy-agent.yml',
+                f'easy-agent runs triage {run_id} -c easy-agent.yml',
+                f'easy-agent traces open {run_id} -c easy-agent.yml --no-browser',
+                'easy-agent browser artifacts -c easy-agent.yml',
+            ]
+        _print_browser_payload(payload, output_format, title=f'browser {kind}')
+
+    asyncio.run(with_runtime(config, _run))
+
+
+def _browser_context(kind: str, url: str, context: str | None) -> str:
+    objective = (
+        'Open the page, collect a snapshot/accessibility-tree first, verify title and visible readiness, '
+        'then record artifacts and blocked follow-up actions.'
+        if kind == 'smoke'
+        else 'Collect a Playwright MCP snapshot or equivalent accessibility-tree evidence before screenshots, then summarize notable page structure.'
+    )
+    extra = context or 'No additional context provided.'
+    return f'URL: {url}\nObjective: {objective}\nAdditional context: {extra}'
+
+
+def _print_browser_payload(payload: dict[str, Any], output_format: str, *, title: str) -> None:
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=title)
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    for key in ['kind', 'url', 'mode']:
+        if key in payload:
+            table.add_row(key, str(payload[key]))
+    doctor = payload.get('doctor')
+    if isinstance(doctor, dict):
+        table.add_row('enabled', str(doctor.get('enabled')))
+        table.add_row('npx_available', str(doctor.get('npx_available')))
+        table.add_row('require_approval', str(doctor.get('require_approval')))
+    result = payload.get('result')
+    if isinstance(result, dict):
+        table.add_row('run_id', str(result.get('run_id') or '-'))
+        table.add_row('status', str(result.get('status') or '-'))
+    triage = payload.get('triage')
+    if isinstance(triage, dict):
+        table.add_row('likely_layer', str(triage.get('likely_layer') or '-'))
+        table.add_row('severity', str(triage.get('severity') or '-'))
+    table.add_row('next_commands', '\n'.join(str(item) for item in payload.get('next_commands', [])))
     console.print(table)

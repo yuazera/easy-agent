@@ -34,6 +34,11 @@ uv run easy-agent new research-agent <target-dir>
 uv run easy-agent new data-agent
 uv run easy-agent new ops-agent
 uv run easy-agent new browser-agent <target-dir>
+uv run easy-agent new web-monitor-agent
+uv run easy-agent new seo-agent
+uv run easy-agent new competitor-research-agent
+uv run easy-agent new meeting-notes-agent
+uv run easy-agent new content-pipeline-agent
 uv run easy-agent new customer-support-agent
 uv run easy-agent new sales-agent
 uv run easy-agent new document-agent
@@ -53,6 +58,7 @@ uv run easy-agent federation list -c easy-agent.yml
 uv run easy-agent runs list -c easy-agent.yml
 uv run easy-agent runs show <run_id> -c easy-agent.yml
 uv run easy-agent runs explain <run_id> -c easy-agent.yml
+uv run easy-agent runs triage <run_id> -c easy-agent.yml
 uv run easy-agent runs fix <run_id> -c easy-agent.yml --format markdown --output fix.md
 uv run easy-agent runs fix <run_id> -c easy-agent.yml --format html --output fix.html
 uv run easy-agent traces export <run_id> -c easy-agent.yml
@@ -68,7 +74,13 @@ uv run easy-agent connectors doctor -c easy-agent.yml
 uv run easy-agent connectors test model -c easy-agent.yml
 uv run easy-agent connectors test browser -c easy-agent.yml
 uv run easy-agent browser doctor -c easy-agent.yml
+uv run easy-agent browser smoke https://example.com -c easy-agent.yml
+uv run easy-agent browser snapshot https://example.com -c easy-agent.yml
+uv run easy-agent browser report <run_id> -c easy-agent.yml
 uv run easy-agent browser artifacts -c easy-agent.yml
+uv run easy-agent workflow list
+uv run easy-agent workflow show browser-qa
+uv run easy-agent workflow run browser-qa -c easy-agent.yml --dry-run --context "Check the home page"
 uv run easy-agent task list
 uv run easy-agent task show repo-review
 uv run easy-agent task show browser-qa
@@ -108,6 +120,11 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `template create data-agent <target-dir>` 创建面向 CSV、JSON、日志、指标摘要与证据化建议的数据分析 starter。
 - `template create ops-agent <target-dir>` 创建面向 diagnostics、runbooks、incident notes 与 release checks 的运维 starter。
 - `template create browser-agent <target-dir>` 创建 mock-first starter，并写入 `browser.enabled: true` 与 `provider: playwright_mcp`。配置启动时，runtime 会把 Playwright MCP 挂成 stdio MCP server，把工件写到 `.easy-agent/browser`，并默认要求敏感浏览器工具先走审批。
+- `template create web-monitor-agent <target-dir>` 创建 MCP-first 页面监控 starter，用于页面变化检查、browser snapshot 与可用性证据。
+- `template create seo-agent <target-dir>` 创建 SEO audit starter，用 browser evidence 与 `official_source_search` 做官方源优先的页面和内容分析。
+- `template create competitor-research-agent <target-dir>` 创建公开网页竞品研究 starter，强调 browser-backed evidence 与 official-source search。
+- `template create meeting-notes-agent <target-dir>` 创建会议摘要、决策、负责人和后续事项 starter。
+- `template create content-pipeline-agent <target-dir>` 创建内容 brief、draft、review 与 publishing checklist starter。
 - `template create customer-support-agent <target-dir>` 创建面向 support triage 与回复草拟的 starter。
 - `template create sales-agent <target-dir>` 创建面向 sales qualification 与 follow-up 的 starter。
 - `template create document-agent <target-dir>` 创建面向文档摘要、抽取和 docs refresh 的 starter。
@@ -126,6 +143,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `runs list` 展示最近 run id、status、kind、session id 与创建时间。
 - `runs show <run_id>` 返回 run summary，包括 event、node、checkpoint、approval 与 child-run 数量。
 - `runs explain <run_id>` 会归类常见失败原因，包括 provider 凭据缺失、schema validation failure、guardrail block、MCP failure、iteration loop，以及 Windows cleanup warning。
+- `runs triage <run_id>` 会把 `runs explain` 与 repair-package classifier 包成一个 advice-only operator view，输出 severity、actionability、selected task pack、approval/browser flags、retry advice、evidence count 与 next commands；它不会修改文件，也不会重新运行 agent。
 - `runs fix <run_id>` 会生成 advice-only 修复包。它复用已存储的 run explanation，自动选择 `bug-fix`、`release-check` 或 `browser-qa` 等内置 task pack，列出安全下一步命令，并可以输出 JSON、Markdown 或单文件 HTML；该命令不会修改文件，也不会重新运行 agent。
 - `traces export <run_id>` 默认返回结构化 trace tree。
 - `traces export <run_id> --raw` 返回历史 raw trace payload。
@@ -146,7 +164,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 
 当终端表格太密时，可以使用 `report latest --html --output report.html`。导出的文件是独立 HTML，包含同一组 benchmark、public-eval、real-network、recent-run 与 raw JSON 证据。
 
-如果想要更完整的本地静态面板，可以使用 `dashboard -c easy-agent.yml --output dashboard.html`。它会把 latest reports、report trend、connector readiness、failed/waiting runs、pending approvals、browser readiness、browser artifacts 与 raw JSON 放到一个只读 HTML 文件里。
+如果想要更完整的本地静态面板，可以使用 `dashboard -c easy-agent.yml --output dashboard.html`。它会把 latest reports、report trend、connector readiness、suggested next steps、failed/waiting runs、pending approvals、browser readiness、browser artifacts 与 raw JSON 放到一个只读 HTML 文件里。
 
 `report trend` 会比较某个目录下的本地 report artifacts，并展示 benchmark、public-eval、real-network 的 latest score、previous score 与 score delta。使用 `--html --output trend.html` 可以生成单文件趋势页。
 
@@ -159,7 +177,11 @@ Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_
 - `connectors test <name>` 聚焦检查列表里的一个 connector。
 - 当 `browser.enabled` 为 true 且 `provider: playwright_mcp` 时，browser diagnostics 会检查 `npx` 是否可用，并说明 live browser automation 是否需要审批。Playwright MCP 通过常规 MCP startup 挂载，因此 `mcp list` 仍然是检查 catalog 的入口。
 - `browser doctor` 输出 browser-specific 静态就绪报告，覆盖 Playwright MCP command shape、headless/isolated mode、artifact directory、approval mode、`npx` 可用性与 MCP server name collision。
+- `browser smoke <url>` 为目标 URL 生成 browser QA plan 并检查 Playwright MCP readiness。默认只是 plan-only；显式传 `--run` 才会把生成的 MCP-first prompt 交给配置里的 runtime 执行。
+- `browser snapshot <url>` 生成 snapshot-first browser plan，要求优先收集 Playwright MCP snapshot 或 accessibility-tree evidence，再考虑截图。默认只是 plan-only；显式传 `--run` 才执行 live runtime。
+- `browser report <run_id>` 会把 run triage、browser doctor 和 browser artifacts 合成一个 browser-related run 的证据视图。
 - `browser artifacts` 只扫描当前 browser artifact directory，不启动 Playwright MCP；它会把截图、snapshot、video、archive、network capture、log 和其他文件分类，方便在 rerun 前检查 browser failure 证据。
+- `workflow list|show|run` 把 task packs 暴露成 guided workflow packs。`workflow run --dry-run` 会在任何 model-backed execution 之前输出 prompt、acceptance criteria、preflight checks 与 next commands。
 - `task list` 展示内置 task packs。
 - `task show <pack>` 输出 prompt template、recommended scenario 与 acceptance criteria。
 - `task run <pack>` 会把任务渲染后交给当前配置的 entrypoint。使用 `--dry-run` 可先检查 prompt。

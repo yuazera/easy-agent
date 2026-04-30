@@ -56,6 +56,7 @@ def dashboard_payload(
             'doctor': browser_doctor(config),
             'artifacts': browser_artifacts(config, limit=12),
         },
+        'suggested_next_steps': _suggested_next_steps(latest, checks, attention, pending, browser_doctor(config)),
     }
 
 
@@ -69,6 +70,8 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     runs: list[Any] = raw_runs if isinstance(raw_runs, list) else []
     raw_attention = payload.get('attention')
     attention: list[Any] = raw_attention if isinstance(raw_attention, list) else []
+    raw_suggestions = payload.get('suggested_next_steps')
+    suggestions: list[Any] = raw_suggestions if isinstance(raw_suggestions, list) else []
     approvals = cast(dict[str, Any], payload.get('approvals') if isinstance(payload.get('approvals'), dict) else {})
     browser = cast(dict[str, Any], payload.get('browser') if isinstance(payload.get('browser'), dict) else {})
     trend = cast(dict[str, Any], payload.get('trend') if isinstance(payload.get('trend'), dict) else {})
@@ -81,6 +84,7 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     raw_pending = approvals.get('pending')
     pending_items: list[Any] = raw_pending if isinstance(raw_pending, list) else []
     approval_rows = ''.join(_approval_row(item if isinstance(item, dict) else {}) for item in pending_items[:12])
+    suggestion_rows = ''.join(_suggestion_row(item if isinstance(item, dict) else {}) for item in suggestions[:8])
     pending_count = len(pending_items)
     trend_cards = ''.join(_trend_card(name, item if isinstance(item, dict) else {}) for name, item in cast(dict[str, Any], trend.get('surfaces') if isinstance(trend.get('surfaces'), dict) else {}).items())
     browser_html = _browser_section(browser)
@@ -152,6 +156,10 @@ def dashboard_html(payload: dict[str, Any]) -> str:
       <div class="grid">{report_cards or '<p class="muted">No report summaries available.</p>'}</div>
     </section>
     <section>
+      <h2>Suggested Next Steps</h2>
+      <table><thead><tr><th>Priority</th><th>Reason</th><th>Command</th></tr></thead><tbody>{suggestion_rows or '<tr><td colspan="3" class="muted">No immediate next steps detected.</td></tr>'}</tbody></table>
+    </section>
+    <section>
       <h2>Trend</h2>
       <div class="grid">{trend_cards or '<p class="muted">No trend points available.</p>'}</div>
     </section>
@@ -184,6 +192,77 @@ def dashboard_html(payload: dict[str, Any]) -> str:
 """
 
 
+def _suggested_next_steps(
+    latest: dict[str, Any],
+    checks: list[Any],
+    attention: list[Any],
+    pending: list[Any],
+    browser: dict[str, Any],
+) -> list[dict[str, str]]:
+    suggestions: list[dict[str, str]] = []
+    for item in attention[:3]:
+        run_id = str(item.get('run_id') or '') if isinstance(item, dict) else ''
+        status = str(item.get('status') or 'unknown') if isinstance(item, dict) else 'unknown'
+        if run_id:
+            suggestions.append(
+                {
+                    'priority': 'high',
+                    'reason': f'Run {run_id} is {status}.',
+                    'command': f'easy-agent runs triage {run_id} -c easy-agent.yml',
+                }
+            )
+    for item in pending[:2]:
+        request_id = str(item.get('request_id') or item.get('id') or '') if isinstance(item, dict) else ''
+        if request_id:
+            suggestions.append(
+                {
+                    'priority': 'high',
+                    'reason': f'Approval request {request_id} is pending.',
+                    'command': f'easy-agent approvals show {request_id} -c easy-agent.yml',
+                }
+            )
+    for check in checks:
+        status = str(getattr(check, 'status', ''))
+        if status not in {'warn', 'error'}:
+            continue
+        name = str(getattr(check, 'name', 'connector'))
+        command = 'easy-agent browser doctor -c easy-agent.yml' if name == 'browser' else 'easy-agent connectors doctor -c easy-agent.yml'
+        suggestions.append({'priority': status, 'reason': str(getattr(check, 'message', name)), 'command': command})
+    if browser.get('enabled') and not browser.get('npx_available'):
+        suggestions.append(
+            {
+                'priority': 'warn',
+                'reason': 'Playwright MCP browser is enabled, but npx is not available.',
+                'command': 'easy-agent connectors test browser -c easy-agent.yml',
+            }
+        )
+    latest_reports = latest.get('reports')
+    raw_reports: dict[str, Any] = latest_reports if isinstance(latest_reports, dict) else {}
+    for name, raw_item in raw_reports.items():
+        item = raw_item if isinstance(raw_item, dict) else {}
+        if item.get('status') in {'missing', 'warn', 'error'}:
+            suggestions.append(
+                {
+                    'priority': str(item.get('status') or 'warn'),
+                    'reason': f'{name} report is {item.get("status")}.',
+                    'command': 'easy-agent report latest -c easy-agent.yml',
+                }
+            )
+    return _dedupe_suggestions(suggestions)[:8]
+
+
+def _dedupe_suggestions(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict[str, str]] = []
+    for item in items:
+        key = (item.get('reason', ''), item.get('command', ''))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
 def _report_card(name: str, item: dict[str, Any]) -> str:
     score = item.get('score')
     return (
@@ -193,6 +272,17 @@ def _report_card(name: str, item: dict[str, Any]) -> str:
         f'<div class="score">{escape(str(score if score is not None else "-"))}</div>'
         f'<p class="muted">{escape(str(item.get("summary") or "-"))}</p>'
         '</article>'
+    )
+
+
+def _suggestion_row(item: dict[str, Any]) -> str:
+    priority = str(item.get('priority') or 'info')
+    return (
+        '<tr>'
+        f'<td><span class="pill {escape(priority)}">{escape(priority)}</span></td>'
+        f'<td>{escape(str(item.get("reason") or "-"))}</td>'
+        f'<td><code>{escape(str(item.get("command") or "-"))}</code></td>'
+        '</tr>'
     )
 
 

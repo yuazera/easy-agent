@@ -110,12 +110,12 @@ def register(app: typer.Typer) -> None:
         checks = _diagnostic_checks(loaded, config_path)
         smoke_result: dict[str, Any] | str = 'skipped'
         next_commands = _wizard_next_commands(selected, config_path, run_id=None)
-        if not skip_smoke and selected != 'browser-agent':
+        if not skip_smoke and selected not in _browser_scenario_templates():
             smoke_result = _run_wizard_smoke(config_path)
             run_id = str(smoke_result.get('run_id') or '') if isinstance(smoke_result, dict) else ''
             next_commands = _wizard_next_commands(selected, config_path, run_id=run_id or None)
-        elif not skip_smoke and selected == 'browser-agent':
-            smoke_result = 'skipped: browser-agent uses a live Playwright MCP connector; run connectors test browser first'
+        elif not skip_smoke and selected in _browser_scenario_templates():
+            smoke_result = f'skipped: {selected} uses a live Playwright MCP connector; run connectors test browser first'
         payload: dict[str, Any] = {
             'scenario': selected,
             'target_dir': str(destination),
@@ -543,6 +543,74 @@ def _templates() -> dict[str, dict[str, Any]]:
                 ),
             ),
         },
+        'web-monitor-agent': {
+            'description': 'Business-ready browser monitor for page changes, uptime, and snapshot evidence.',
+            'files': _template_files(
+                'web-monitor-agent',
+                'A practical starter for MCP-first web monitoring and browser evidence collection.',
+                _browser_business_agent_template_config(
+                    graph_name='web_monitor_agent',
+                    agent_name='web_monitor',
+                    description='Web monitor for page changes, uptime checks, and snapshot evidence.',
+                    prompt='For real web monitoring, check browser readiness first, prefer snapshots before screenshots, record changed selectors or copy, and avoid form submission without approval.',
+                    tools=['python_echo'],
+                ),
+            ),
+        },
+        'seo-agent': {
+            'description': 'Business-ready SEO assistant for page audits, metadata checks, and content opportunities.',
+            'files': _template_files(
+                'seo-agent',
+                'A practical starter for SEO audits using browser evidence and source-first research.',
+                _browser_business_agent_template_config(
+                    graph_name='seo_agent',
+                    agent_name='seo_specialist',
+                    description='SEO assistant for page audits, metadata checks, and content opportunities.',
+                    prompt='For real SEO work, verify page title, headings, metadata, canonical signals, internal links, and content gaps with browser or official-source evidence.',
+                    tools=['python_echo', 'official_source_search'],
+                ),
+            ),
+        },
+        'competitor-research-agent': {
+            'description': 'Business-ready competitor research assistant for public web comparison.',
+            'files': _template_files(
+                'competitor-research-agent',
+                'A practical starter for competitor research with browser-backed evidence.',
+                _browser_business_agent_template_config(
+                    graph_name='competitor_research_agent',
+                    agent_name='competitor_researcher',
+                    description='Competitor research assistant for public web comparison.',
+                    prompt='For real competitor research, separate observed page evidence, cited sources, assumptions, and prioritized business implications.',
+                    tools=['python_echo', 'official_source_search'],
+                ),
+            ),
+        },
+        'meeting-notes-agent': {
+            'description': 'Business-ready meeting notes assistant for summaries, decisions, and follow-ups.',
+            'files': _template_files(
+                'meeting-notes-agent',
+                'A practical starter for meeting notes, action items, and follow-up summaries.',
+                _business_agent_template_config(
+                    graph_name='meeting_notes_agent',
+                    agent_name='meeting_summarizer',
+                    description='Meeting notes assistant for summaries, decisions, and follow-ups.',
+                    prompt='For real meeting notes, preserve decisions, owners, deadlines, unresolved questions, and follow-up actions in a structured summary.',
+                ),
+            ),
+        },
+        'content-pipeline-agent': {
+            'description': 'Business-ready content pipeline assistant for briefs, drafts, review, and publishing checklists.',
+            'files': _template_files(
+                'content-pipeline-agent',
+                'A practical starter for content briefs, drafts, review workflows, and publishing checklists.',
+                _business_agent_template_config(
+                    graph_name='content_pipeline_agent',
+                    agent_name='content_operator',
+                    description='Content pipeline assistant for briefs, drafts, review, and publishing checklists.',
+                    prompt='For real content work, turn goals into briefs, drafts, review notes, publishing checklists, and evidence-backed improvement suggestions.',
+                ),
+            ),
+        },
     }
 
 
@@ -570,7 +638,7 @@ def _template_files(name: str, description: str, config: str) -> dict[str, str]:
             ```
             """
         ).strip()
-        if name == 'browser-agent'
+        if name in _browser_scenario_templates()
         else dedent(
             """
             ## Run
@@ -608,6 +676,10 @@ def _template_files(name: str, description: str, config: str) -> dict[str, str]:
     }
 
 
+def _browser_scenario_templates() -> set[str]:
+    return {'browser-agent', 'web-monitor-agent', 'seo-agent', 'competitor-research-agent'}
+
+
 def _template_env_example(name: str) -> str:
     lines = ['# Optional live-provider credentials. Keep real values in your shell or .env.local only.']
     if name == 'eval-smoke':
@@ -626,11 +698,15 @@ def _template_env_example(name: str) -> str:
         'document-agent',
         'qa-agent',
         'release-agent',
+        'meeting-notes-agent',
+        'content-pipeline-agent',
     }:
         lines.append('# No credentials are required for the mock-backed smoke path.')
-    elif name == 'research-agent':
+    elif name in {'research-agent', 'seo-agent', 'competitor-research-agent'}:
         lines.append('# No credentials are required for the mock-backed smoke path.')
         lines.append('SERPAPI_API_KEY=<SECRET>')
+    elif name == 'web-monitor-agent':
+        lines.append('# No credentials are required for the mock-backed browser planning path.')
     else:
         lines.append('DEEPSEEK_API_KEY=<SECRET>')
     return '\n'.join(lines) + '\n'
@@ -905,6 +981,65 @@ def _browser_agent_template_config() -> str:
               tools:
                 - python_echo
               max_iterations: 4
+          nodes: []
+
+        browser:
+          enabled: true
+          provider: playwright_mcp
+          server_name: playwright
+          headless: true
+          isolated: true
+          artifacts_dir: .easy-agent/browser
+          timeout_seconds: 30
+          require_approval: true
+
+        skills:
+          - path: skills/examples
+
+        storage:
+          path: .easy-agent
+          database: state.db
+
+        security:
+          human_loop:
+            mode: hybrid
+          sandbox:
+            mode: auto
+            working_root: .
+        """
+    ).lstrip()
+
+
+def _browser_business_agent_template_config(
+    *,
+    graph_name: str,
+    agent_name: str,
+    description: str,
+    prompt: str,
+    tools: list[str],
+) -> str:
+    tool_rows = '\n'.join(f'                - {tool}' for tool in tools)
+    return dedent(
+        f"""
+        model:
+          provider: mock
+          protocol: mock
+          model: mock-agent
+          base_url: mock://local
+          api_key_env: EASY_AGENT_MOCK_API_KEY
+
+        graph:
+          name: {graph_name}
+          entrypoint: {agent_name}
+          agents:
+            - name: {agent_name}
+              description: {description}
+              system_prompt: |
+                You are a careful browser-backed business workflow assistant. For mock smoke runs, call python_echo once.
+                {prompt}
+              tools:
+{tool_rows}
+              max_iterations: 5
           nodes: []
 
         browser:

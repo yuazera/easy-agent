@@ -21,6 +21,7 @@ from agent_runtime import EasyAgentRuntime, build_runtime
 from agent_runtime.dashboard import dashboard_html, dashboard_payload
 from agent_runtime.diagnostics import (
     build_fix_package,
+    build_triage_package,
     explain_run,
     fix_package_html,
     fix_package_markdown,
@@ -253,6 +254,44 @@ def fix_run_command(
     table.add_row('Probable Cause', str(payload['probable_cause']))
     table.add_row('Recommended Commands', '\n'.join(str(item) for item in payload['recommended_commands']))
     console.print(table)
+
+
+@runs_app.command('triage')
+def triage_run_command(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    task_pack: str = typer.Option('auto', '--task-pack', help='Task pack override, or auto.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        payload = build_triage_package(runtime.store, run_id, task_pack=task_pack)
+    finally:
+        asyncio.run(runtime.aclose())
+    if output_format == 'json':
+        console.print_json(json.dumps(payload, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f'run triage: {run_id}')
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    for key in [
+        'status',
+        'likely_layer',
+        'severity',
+        'actionability',
+        'selected_task_pack',
+        'needs_approval',
+        'browser_related',
+        'can_retry',
+        'probable_cause',
+    ]:
+        table.add_row(key, str(payload[key]))
+    table.add_row('next_commands', '\n'.join(str(item) for item in payload['next_commands']))
+    console.print(table)
+    if payload['evidence']:
+        console.print_json(json.dumps({'evidence': payload['evidence']}, ensure_ascii=False))
 
 
 @traces_app.command('export')

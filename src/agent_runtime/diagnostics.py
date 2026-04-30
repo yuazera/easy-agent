@@ -55,6 +55,33 @@ def build_fix_package(store: DiagnosticStore, run_id: str, *, task_pack: str = '
     }
 
 
+def build_triage_package(store: DiagnosticStore, run_id: str, *, task_pack: str = 'auto') -> dict[str, Any]:
+    explanation = explain_run(store, run_id)
+    selected_pack = _select_task_pack(str(task_pack), explanation)
+    layer = str(explanation.get('likely_layer') or 'runtime')
+    status = str(explanation.get('status') or 'unknown')
+    raw_evidence = explanation.get('evidence')
+    evidence: list[Any] = raw_evidence if isinstance(raw_evidence, list) else []
+    return {
+        'run_id': run_id,
+        'mode': 'advice_only',
+        'status': status,
+        'likely_layer': layer,
+        'headline': explanation.get('headline') or '-',
+        'severity': _triage_severity(status, layer),
+        'actionability': _triage_actionability(layer),
+        'selected_task_pack': selected_pack,
+        'needs_approval': layer in {'human_approval', 'guardrail'} or status == RunStatus.WAITING_APPROVAL.value,
+        'browser_related': layer == 'browser_mcp',
+        'can_retry': layer not in {'guardrail', 'human_approval'} and status != RunStatus.SUCCEEDED.value,
+        'evidence_count': len(evidence),
+        'evidence': evidence,
+        'next_commands': _fix_commands(run_id, explanation),
+        'recommended_actions': explanation.get('recommended_actions', []),
+        'probable_cause': _probable_cause(explanation),
+    }
+
+
 def fix_package_markdown(payload: dict[str, Any]) -> str:
     raw_explanation = payload.get('explanation')
     explanation: dict[str, Any] = raw_explanation if isinstance(raw_explanation, dict) else {}
@@ -365,6 +392,37 @@ def _safety_notes(explanation: dict[str, Any]) -> list[str]:
     if layer == 'agent_loop':
         notes.append('Prefer tightening prompts or duplicate-call controls before raising max_iterations.')
     return notes
+
+
+def _triage_severity(status: str, layer: str) -> str:
+    if status == RunStatus.SUCCEEDED.value:
+        return 'info'
+    if layer in {'guardrail', 'human_approval'}:
+        return 'review'
+    if layer in {'model_provider', 'tool_validation', 'tool_runtime', 'browser_mcp', 'mcp'}:
+        return 'high'
+    if layer in {'human_interrupt', 'cleanup_warning', 'runtime_recovery'}:
+        return 'medium'
+    return 'medium'
+
+
+def _triage_actionability(layer: str) -> str:
+    mapping = {
+        'success': 'Inspect trace evidence only if this run should become a golden example.',
+        'runtime_recovery': 'Review retry or repair evidence before promoting the workflow.',
+        'human_approval': 'Show and resolve the pending approval, then resume.',
+        'human_interrupt': 'Inspect checkpoints, then resume or fork when ready.',
+        'model_provider': 'Fix provider credentials or switch to a mock-backed workflow.',
+        'tool_validation': 'Inspect tool validation evidence and tighten schema or prompt guidance.',
+        'guardrail': 'Review the blocked payload and policy before changing inputs.',
+        'tool_runtime': 'Reproduce the failing tool with recorded arguments.',
+        'browser_mcp': 'Run browser doctor, inspect artifacts, then rerun with explicit approvals.',
+        'mcp': 'Check MCP catalog, roots, auth, and transport startup.',
+        'agent_loop': 'Tighten the prompt/tool contract before raising iteration limits.',
+        'cleanup_warning': 'Treat as Windows subprocess cleanup debt when tests are otherwise green.',
+        'runtime': 'Export the trace tree and inspect the latest failed event.',
+    }
+    return mapping.get(layer, mapping['runtime'])
 
 
 def _evidence_row(item: dict[str, Any]) -> str:

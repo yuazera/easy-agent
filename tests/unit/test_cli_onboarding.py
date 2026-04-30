@@ -44,6 +44,11 @@ def test_template_commands_list_and_create(tmp_path: Path) -> None:
     assert 'document-agent' in listed.output
     assert 'qa-agent' in listed.output
     assert 'release-agent' in listed.output
+    assert 'web-monitor-agent' in listed.output
+    assert 'seo-agent' in listed.output
+    assert 'competitor-research-agent' in listed.output
+    assert 'meeting-notes-agent' in listed.output
+    assert 'content-pipeline-agent' in listed.output
     assert created.exit_code == 0
     assert (destination / 'easy-agent.yml').exists()
     assert 'easy-agent config doctor' in (destination / 'README.md').read_text(encoding='utf-8')
@@ -71,6 +76,11 @@ def test_all_templates_create_valid_configs(tmp_path: Path) -> None:
         'document-agent',
         'qa-agent',
         'release-agent',
+        'web-monitor-agent',
+        'seo-agent',
+        'competitor-research-agent',
+        'meeting-notes-agent',
+        'content-pipeline-agent',
     ]
 
     listed = runner.invoke(app, ['template', 'list'])
@@ -112,6 +122,9 @@ def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: Mon
     ops = runner.invoke(app, ['new', 'ops-agent'])
     browser = runner.invoke(app, ['new', 'browser-agent', 'browser-starter'])
     release = runner.invoke(app, ['new', 'release-agent'])
+    web_monitor = runner.invoke(app, ['new', 'web-monitor-agent'])
+    seo = runner.invoke(app, ['new', 'seo-agent'])
+    meeting_notes = runner.invoke(app, ['new', 'meeting-notes-agent'])
 
     assert coding.exit_code == 0
     assert research.exit_code == 0
@@ -119,18 +132,27 @@ def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: Mon
     assert ops.exit_code == 0
     assert browser.exit_code == 0
     assert release.exit_code == 0
+    assert web_monitor.exit_code == 0
+    assert seo.exit_code == 0
+    assert meeting_notes.exit_code == 0
     load_config(tmp_path / 'coding-agent' / 'easy-agent.yml')
     load_config(tmp_path / 'research-starter' / 'easy-agent.yml')
     load_config(tmp_path / 'data-agent' / 'easy-agent.yml')
     load_config(tmp_path / 'ops-agent' / 'easy-agent.yml')
     load_config(tmp_path / 'browser-starter' / 'easy-agent.yml')
     load_config(tmp_path / 'release-agent' / 'easy-agent.yml')
+    assert load_config(tmp_path / 'web-monitor-agent' / 'easy-agent.yml').browser.enabled is True
+    assert load_config(tmp_path / 'seo-agent' / 'easy-agent.yml').browser.enabled is True
+    load_config(tmp_path / 'meeting-notes-agent' / 'easy-agent.yml')
     assert 'workbench' in (tmp_path / 'coding-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'official_source_search' in (tmp_path / 'research-starter' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'data_agent' in (tmp_path / 'data-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'ops_agent' in (tmp_path / 'ops-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'browser_agent' in (tmp_path / 'browser-starter' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'release_agent' in (tmp_path / 'release-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'web_monitor_agent' in (tmp_path / 'web-monitor-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'official_source_search' in (tmp_path / 'seo-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
+    assert 'meeting_notes_agent' in (tmp_path / 'meeting-notes-agent' / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'SERPAPI_API_KEY=<SECRET>' in (tmp_path / 'research-starter' / '.env.local.example').read_text(encoding='utf-8')
 
 

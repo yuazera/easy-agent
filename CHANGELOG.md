@@ -38,6 +38,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added browser workflow inspection surfaces:
   - `easy-agent browser doctor`
   - `easy-agent browser artifacts`
+- Added workflow and triage operator surfaces:
+  - `easy-agent workflow list|show|run`
+  - `easy-agent runs triage`
+- Added MCP-first browser helper surfaces:
+  - `easy-agent browser smoke`
+  - `easy-agent browser snapshot`
+  - `easy-agent browser report`
 - Added browser-specific task packs:
   - `browser-qa`
   - `browser-research`
@@ -58,6 +65,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `document-agent`
   - `qa-agent`
   - `release-agent`
+  - `web-monitor-agent`
+  - `seo-agent`
+  - `competitor-research-agent`
+  - `meeting-notes-agent`
+  - `content-pipeline-agent`
 - Added a lightweight Python `AgentApp` facade over `EasyAgentRuntime` for config-driven embedding.
 - Added setup preflight and config-doctor risk checks for Python baseline drift, local tool availability, required environment variables, MCP roots/auth, federation auth, workbench executors, storage portability, human-loop coverage, and eval readiness.
 - Added scenario starter templates for MCP filesystem, public-eval smoke, federation loopback, workbench-backed coding tasks, coding tasks, and source-first research tasks.
@@ -98,6 +110,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Promoted `browser-agent` from planning-only to Playwright MCP-ready while keeping smoke validation mock-first and approval-aware.
 - Enhanced run diagnostics so Playwright MCP and browser-tool failures classify as `browser_mcp`, select `browser-qa`, and suggest browser doctor, artifact, connector, trace, and repair commands.
 - Enhanced the static dashboard with failed/waiting/interrupted run attention rows, pending approval rows, browser readiness, browser artifacts, and generated failure-to-fix commands.
+- Enhanced the static dashboard with suggested next steps that point operators to triage, approvals, browser checks, connector checks, and report refresh commands.
 - Extended run diagnostics with advice-only fix packages that select a task pack and list safe follow-up commands without mutating files or rerunning agents.
 - Updated the bilingual README pair and reference docs to keep scores while adding scenario-proof framing for resume, approvals, MCP restart, provider schema repair, federation retry, and workbench snapshot restore.
 - Extended the CLI integration surface with `easy-agent integration real-network`.

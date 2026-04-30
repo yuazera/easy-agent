@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from _pytest.monkeypatch import MonkeyPatch
 from typer.testing import CliRunner
 
 from agent_cli.app import app
+from agent_common.models import RunStatus
+from agent_runtime import build_runtime
 
 
 def _mock_config(path: Path) -> None:
@@ -128,6 +131,55 @@ def test_task_pack_show_dry_run_and_run(tmp_path: Path) -> None:
     assert 'focus tests' in dry.output
     assert run.exit_code == 0
     assert '"status": "succeeded"' in run.output
+
+
+def test_workflow_run_and_browser_helpers(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    config = tmp_path / 'easy-agent.yml'
+    _mock_config(config)
+    browser_config = tmp_path / 'easy-agent-browser.yml'
+    _mock_config(browser_config)
+    browser_config.write_text(
+        browser_config.read_text(encoding='utf-8')
+        + """
+browser:
+  enabled: true
+  provider: playwright_mcp
+  server_name: playwright
+  require_approval: true
+""",
+        encoding='utf-8',
+    )
+    monkeypatch.setattr('agent_runtime.connectors.shutil.which', lambda command: 'npx.cmd' if command == 'npx' else None)
+
+    listed = CliRunner().invoke(app, ['workflow', 'list', '--format', 'json'])
+    dry = CliRunner().invoke(app, ['workflow', 'run', 'browser-qa', '-c', str(browser_config), '--dry-run', '--context', 'home page', '--format', 'json'])
+    run = CliRunner().invoke(app, ['workflow', 'run', 'repo-review', '-c', str(config), '--context', 'focus tests', '--format', 'json'])
+    smoke = CliRunner().invoke(app, ['browser', 'smoke', 'https://example.com', '-c', str(browser_config), '--format', 'json'])
+    snapshot = CliRunner().invoke(app, ['browser', 'snapshot', 'https://example.com', '-c', str(browser_config), '--format', 'json'])
+
+    runtime = build_runtime(browser_config)
+    try:
+        runtime.store.create_run('run_browser_report', 'baseline', {'input': 'hello'})
+        runtime.store.record_event('run_browser_report', 'tool_call_failed', {'tool': 'browser_snapshot', 'error': 'Playwright MCP failed'})
+        runtime.store.finish_run('run_browser_report', RunStatus.FAILED.value, {'error': 'browser snapshot failed'})
+    finally:
+        asyncio.run(runtime.aclose())
+    report = CliRunner().invoke(app, ['browser', 'report', 'run_browser_report', '-c', str(browser_config), '--format', 'json'])
+
+    assert listed.exit_code == 0
+    assert '"workflows"' in listed.output
+    assert dry.exit_code == 0
+    assert '"pack": "browser-qa"' in dry.output
+    assert 'easy-agent browser doctor' in dry.output
+    assert run.exit_code == 0
+    assert '"status": "succeeded"' in run.output
+    assert smoke.exit_code == 0
+    assert '"mode": "plan_only"' in smoke.output
+    assert 'https://example.com' in smoke.output
+    assert snapshot.exit_code == 0
+    assert 'accessibility-tree' in snapshot.output
+    assert report.exit_code == 0
+    assert '"likely_layer": "browser_mcp"' in report.output
 
 
 def test_skill_catalog_and_plugins_doctor(tmp_path: Path) -> None:
