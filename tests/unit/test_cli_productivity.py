@@ -152,10 +152,17 @@ browser:
     monkeypatch.setattr('agent_runtime.connectors.shutil.which', lambda command: 'npx.cmd' if command == 'npx' else None)
 
     listed = CliRunner().invoke(app, ['workflow', 'list', '--format', 'json'])
+    workflow_file = tmp_path / 'workflow.yml'
+    initialized = CliRunner().invoke(
+        app,
+        ['workflow', 'init', 'browser-audit', '--output', str(workflow_file), '--context', 'audit home', '--bundle-on-completion', '--format', 'json'],
+    )
+    file_dry = CliRunner().invoke(app, ['workflow', 'run', str(workflow_file), '-c', str(browser_config), '--dry-run', '--format', 'json'])
     dry = CliRunner().invoke(app, ['workflow', 'run', 'browser-qa', '-c', str(browser_config), '--dry-run', '--context', 'home page', '--format', 'json'])
     run = CliRunner().invoke(app, ['workflow', 'run', 'repo-review', '-c', str(config), '--context', 'focus tests', '--format', 'json'])
     smoke = CliRunner().invoke(app, ['browser', 'smoke', 'https://example.com', '-c', str(browser_config), '--format', 'json'])
     snapshot = CliRunner().invoke(app, ['browser', 'snapshot', 'https://example.com', '-c', str(browser_config), '--format', 'json'])
+    audit = CliRunner().invoke(app, ['browser', 'audit', 'https://example.com', '-c', str(browser_config), '--format', 'json'])
 
     runtime = build_runtime(browser_config)
     try:
@@ -168,6 +175,12 @@ browser:
 
     assert listed.exit_code == 0
     assert '"workflows"' in listed.output
+    assert initialized.exit_code == 0
+    assert workflow_file.exists()
+    assert 'browser-audit' in workflow_file.read_text(encoding='utf-8')
+    assert file_dry.exit_code == 0
+    assert '"pack": "browser-audit"' in file_dry.output
+    assert 'title, meta description' in file_dry.output
     assert dry.exit_code == 0
     assert '"pack": "browser-qa"' in dry.output
     assert 'easy-agent browser doctor' in dry.output
@@ -178,6 +191,9 @@ browser:
     assert 'https://example.com' in smoke.output
     assert snapshot.exit_code == 0
     assert 'accessibility-tree' in snapshot.output
+    assert audit.exit_code == 0
+    assert '"pack": "browser-audit"' in audit.output
+    assert 'canonical signals' in audit.output
     assert report.exit_code == 0
     assert '"likely_layer": "browser_mcp"' in report.output
 

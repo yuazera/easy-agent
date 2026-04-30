@@ -57,6 +57,8 @@ def dashboard_payload(
             'artifacts': browser_artifacts(config, limit=12),
         },
         'suggested_next_steps': _suggested_next_steps(latest, checks, attention, pending, browser_doctor(config)),
+        'workflow_recommendations': _workflow_recommendations(latest, checks, attention, browser_doctor(config)),
+        'template_recommendations': _template_recommendations(latest, checks, attention, browser_doctor(config)),
     }
 
 
@@ -72,6 +74,10 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     attention: list[Any] = raw_attention if isinstance(raw_attention, list) else []
     raw_suggestions = payload.get('suggested_next_steps')
     suggestions: list[Any] = raw_suggestions if isinstance(raw_suggestions, list) else []
+    raw_workflow_recommendations = payload.get('workflow_recommendations')
+    workflow_recommendations: list[Any] = raw_workflow_recommendations if isinstance(raw_workflow_recommendations, list) else []
+    raw_template_recommendations = payload.get('template_recommendations')
+    template_recommendations: list[Any] = raw_template_recommendations if isinstance(raw_template_recommendations, list) else []
     approvals = cast(dict[str, Any], payload.get('approvals') if isinstance(payload.get('approvals'), dict) else {})
     browser = cast(dict[str, Any], payload.get('browser') if isinstance(payload.get('browser'), dict) else {})
     trend = cast(dict[str, Any], payload.get('trend') if isinstance(payload.get('trend'), dict) else {})
@@ -85,6 +91,8 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     pending_items: list[Any] = raw_pending if isinstance(raw_pending, list) else []
     approval_rows = ''.join(_approval_row(item if isinstance(item, dict) else {}) for item in pending_items[:12])
     suggestion_rows = ''.join(_suggestion_row(item if isinstance(item, dict) else {}) for item in suggestions[:8])
+    workflow_recommendation_rows = ''.join(_recommendation_row(item if isinstance(item, dict) else {}) for item in workflow_recommendations[:8])
+    template_recommendation_rows = ''.join(_recommendation_row(item if isinstance(item, dict) else {}) for item in template_recommendations[:8])
     pending_count = len(pending_items)
     trend_cards = ''.join(_trend_card(name, item if isinstance(item, dict) else {}) for name, item in cast(dict[str, Any], trend.get('surfaces') if isinstance(trend.get('surfaces'), dict) else {}).items())
     browser_html = _browser_section(browser)
@@ -158,6 +166,14 @@ def dashboard_html(payload: dict[str, Any]) -> str:
     <section>
       <h2>Suggested Next Steps</h2>
       <table><thead><tr><th>Priority</th><th>Reason</th><th>Command</th></tr></thead><tbody>{suggestion_rows or '<tr><td colspan="3" class="muted">No immediate next steps detected.</td></tr>'}</tbody></table>
+    </section>
+    <section>
+      <h2>Workflow Recommendations</h2>
+      <table><thead><tr><th>Pack</th><th>Reason</th><th>Command</th></tr></thead><tbody>{workflow_recommendation_rows or '<tr><td colspan="3" class="muted">No workflow recommendation yet.</td></tr>'}</tbody></table>
+    </section>
+    <section>
+      <h2>Template Recommendations</h2>
+      <table><thead><tr><th>Template</th><th>Reason</th><th>Command</th></tr></thead><tbody>{template_recommendation_rows or '<tr><td colspan="3" class="muted">No template recommendation yet.</td></tr>'}</tbody></table>
     </section>
     <section>
       <h2>Trend</h2>
@@ -263,6 +279,121 @@ def _dedupe_suggestions(items: list[dict[str, str]]) -> list[dict[str, str]]:
     return deduped
 
 
+def _workflow_recommendations(
+    latest: dict[str, Any],
+    checks: list[Any],
+    attention: list[Any],
+    browser: dict[str, Any],
+) -> list[dict[str, str]]:
+    recommendations: list[dict[str, str]] = []
+    if attention:
+        recommendations.append(
+            {
+                'name': 'bug-fix',
+                'reason': 'Recent runs need attention; start with a scoped failure investigation workflow.',
+                'command': 'easy-agent workflow init bug-fix --output workflow.yml --force',
+            }
+        )
+    if browser.get('enabled'):
+        recommendations.append(
+            {
+                'name': 'browser-audit',
+                'reason': 'Browser MCP is enabled; use a page-quality audit before deeper browser automation.',
+                'command': 'easy-agent workflow init browser-audit --output workflow.yml --force',
+            }
+        )
+    if any(str(getattr(check, 'status', '')) in {'warn', 'error'} for check in checks):
+        recommendations.append(
+            {
+                'name': 'release-check',
+                'reason': 'Connector warnings or errors exist; run a release-readiness pass before trusting live workflows.',
+                'command': 'easy-agent workflow run release-check -c easy-agent.yml --dry-run',
+            }
+        )
+    reports = latest.get('reports')
+    raw_reports: dict[str, Any] = reports if isinstance(reports, dict) else {}
+    if any((item if isinstance(item, dict) else {}).get('status') == 'missing' for item in raw_reports.values()):
+        recommendations.append(
+            {
+                'name': 'docs-refresh',
+                'reason': 'Local evidence reports are incomplete; refresh docs and verification notes after the next pass.',
+                'command': 'easy-agent workflow run docs-refresh -c easy-agent.yml --dry-run',
+            }
+        )
+    if not recommendations:
+        recommendations.append(
+            {
+                'name': 'repo-review',
+                'reason': 'No urgent failures detected; use repo-review as the default periodic quality workflow.',
+                'command': 'easy-agent workflow run repo-review -c easy-agent.yml --dry-run',
+            }
+        )
+    return _dedupe_recommendations(recommendations)
+
+
+def _template_recommendations(
+    latest: dict[str, Any],
+    checks: list[Any],
+    attention: list[Any],
+    browser: dict[str, Any],
+) -> list[dict[str, str]]:
+    recommendations: list[dict[str, str]] = []
+    if browser.get('enabled'):
+        recommendations.append(
+            {
+                'name': 'seo-agent',
+                'reason': 'Browser MCP is configured, so SEO/page-quality starters can use browser evidence.',
+                'command': 'easy-agent new seo-agent seo-starter --force',
+            }
+        )
+    if any('search' in str(getattr(check, 'name', '')) for check in checks):
+        recommendations.append(
+            {
+                'name': 'research-agent',
+                'reason': 'Search/evaluation surfaces are present; use the source-first research starter for web-backed work.',
+                'command': 'easy-agent new research-agent research-starter --force',
+            }
+        )
+    if attention:
+        recommendations.append(
+            {
+                'name': 'ops-agent',
+                'reason': 'Failed or interrupted runs benefit from runbook-style diagnostics.',
+                'command': 'easy-agent new ops-agent ops-starter --force',
+            }
+        )
+    reports = latest.get('reports')
+    if isinstance(reports, dict) and reports:
+        recommendations.append(
+            {
+                'name': 'release-agent',
+                'reason': 'Report evidence exists; use release-agent to review changelog, verification, and risk.',
+                'command': 'easy-agent new release-agent release-starter --force',
+            }
+        )
+    if not recommendations:
+        recommendations.append(
+            {
+                'name': 'coding-agent',
+                'reason': 'Default starter for repository work, local tools, and mock-first smoke validation.',
+                'command': 'easy-agent new coding-agent coding-starter --force',
+            }
+        )
+    return _dedupe_recommendations(recommendations)
+
+
+def _dedupe_recommendations(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    seen: set[str] = set()
+    result: list[dict[str, str]] = []
+    for item in items:
+        name = item.get('name', '')
+        if name in seen:
+            continue
+        seen.add(name)
+        result.append(item)
+    return result
+
+
 def _report_card(name: str, item: dict[str, Any]) -> str:
     score = item.get('score')
     return (
@@ -280,6 +411,16 @@ def _suggestion_row(item: dict[str, Any]) -> str:
     return (
         '<tr>'
         f'<td><span class="pill {escape(priority)}">{escape(priority)}</span></td>'
+        f'<td>{escape(str(item.get("reason") or "-"))}</td>'
+        f'<td><code>{escape(str(item.get("command") or "-"))}</code></td>'
+        '</tr>'
+    )
+
+
+def _recommendation_row(item: dict[str, Any]) -> str:
+    return (
+        '<tr>'
+        f'<td><code>{escape(str(item.get("name") or "-"))}</code></td>'
         f'<td>{escape(str(item.get("reason") or "-"))}</td>'
         f'<td><code>{escape(str(item.get("command") or "-"))}</code></td>'
         '</tr>'

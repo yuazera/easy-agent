@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
 from agent_cli.shared import with_runtime
 from agent_common.models import HumanLoopMode
 from agent_runtime import EasyAgentRuntime, build_runtime
+from agent_runtime.bundles import write_run_bundle
 from agent_runtime.connectors import (
     browser_artifacts,
     browser_doctor,
@@ -172,9 +175,49 @@ def show_workflow(
     console.print_json(json.dumps(payload, ensure_ascii=False))
 
 
+@workflow_app.command('init')
+def init_workflow(
+    pack: str = typer.Argument(..., help='Workflow pack name.'),
+    output: str = typer.Option('workflow.yml', '-o', '--output', help='Workflow YAML output path.'),
+    context: str | None = typer.Option(None, '--context', help='Default workflow context.'),
+    approval_mode: str = typer.Option('hybrid', '--approval-mode'),
+    bundle_on_completion: bool = typer.Option(False, '--bundle-on-completion/--no-bundle-on-completion'),
+    force: bool = typer.Option(False, '--force', help='Overwrite an existing workflow file.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    pack_info = task_pack_payload(get_task_pack(pack))
+    output_path = Path(output)
+    if output_path.exists() and not force:
+        raise typer.BadParameter(f'{output_path} already exists; pass --force to overwrite.')
+    payload = {
+        'version': 1,
+        'name': pack,
+        'pack': pack,
+        'context': context or f'Run the {pack} workflow.',
+        'approval_mode': approval_mode,
+        'bundle_on_completion': bundle_on_completion,
+        'description': pack_info['description'],
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    response = {'output': str(output_path), 'workflow': payload}
+    if output_format == 'json':
+        console.print_json(json.dumps(response, ensure_ascii=False))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title='workflow init')
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    table.add_row('Output', str(output_path))
+    table.add_row('Pack', pack)
+    table.add_row('Bundle On Completion', str(bundle_on_completion))
+    console.print(table)
+
+
 @workflow_app.command('run')
 def run_workflow(
-    pack: str = typer.Argument(..., help='Workflow pack name.'),
+    pack: str = typer.Argument(..., help='Workflow pack name or workflow.yml path.'),
     config: str = typer.Option('easy-agent.yml', '-c', '--config'),
     context: str | None = typer.Option(None, '--context', help='Additional workflow context.'),
     session_id: str | None = typer.Option(None, '--session-id'),
@@ -182,18 +225,23 @@ def run_workflow(
     dry_run: bool = typer.Option(False, '--dry-run', help='Render the workflow plan without running the agent.'),
     output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
 ) -> None:
-    pack_info = task_pack_payload(get_task_pack(pack))
-    prompt = render_task_prompt(pack, context)
+    workflow = _load_workflow_input(pack)
+    selected_pack = str(workflow.get('pack') or pack)
+    selected_context = context if context is not None else str(workflow.get('context') or '')
+    selected_approval_mode = approval_mode if approval_mode != 'hybrid' else str(workflow.get('approval_mode') or approval_mode)
+    pack_info = task_pack_payload(get_task_pack(selected_pack))
+    prompt = render_task_prompt(selected_pack, selected_context)
     checks = connector_checks(config)
     payload: dict[str, Any] = {
-        'pack': pack,
+        'pack': selected_pack,
+        'workflow': workflow,
         'description': pack_info['description'],
         'recommended_scenario': pack_info['recommended_scenario'],
         'acceptance_criteria': pack_info['acceptance_criteria'],
         'prompt': prompt,
         'dry_run': dry_run,
         'preflight': [check.__dict__ for check in checks],
-        'next_commands': _workflow_next_commands(pack),
+        'next_commands': _workflow_next_commands(selected_pack),
     }
     if dry_run:
         _print_workflow_payload(payload, output_format)
@@ -203,12 +251,20 @@ def run_workflow(
         result: dict[str, Any] = await runtime.run(
             prompt,
             session_id=session_id,
-            approval_mode=HumanLoopMode(approval_mode),
+            approval_mode=HumanLoopMode(selected_approval_mode),
         )
         payload['result'] = result
         run_id = str(result.get('run_id') or '')
         if run_id:
-            payload['next_commands'] = _workflow_next_commands(pack, run_id=run_id)
+            payload['next_commands'] = _workflow_next_commands(selected_pack, run_id=run_id)
+            if workflow.get('bundle_on_completion'):
+                payload['bundle'] = write_run_bundle(
+                    runtime.store,
+                    run_id,
+                    Path(f'run-bundle-{_safe_token(run_id)}'),
+                    browser_payload=browser_artifacts(config, limit=50),
+                    force=True,
+                )
         _print_workflow_payload(payload, output_format)
 
     asyncio.run(with_runtime(config, _run))
@@ -286,6 +342,18 @@ def snapshot_browser(
     _browser_plan_command('snapshot', url, config, context=context, run=run, approval_mode=approval_mode, output_format=output_format)
 
 
+@browser_app.command('audit')
+def audit_browser(
+    url: str = typer.Argument(..., help='Target URL for the browser audit plan.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    context: str | None = typer.Option(None, '--context', help='Additional browser audit context.'),
+    run: bool = typer.Option(False, '--run', help='Run the generated browser-audit prompt through the configured runtime.'),
+    approval_mode: str = typer.Option('hybrid', '--approval-mode'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    _browser_plan_command('audit', url, config, context=context, run=run, approval_mode=approval_mode, output_format=output_format)
+
+
 @browser_app.command('report')
 def report_browser(
     run_id: str = typer.Argument(..., help='Existing run id.'),
@@ -326,6 +394,22 @@ def _workflow_next_commands(pack: str, *, run_id: str | None = None) -> list[str
     return commands
 
 
+def _load_workflow_input(value: str) -> dict[str, Any]:
+    path = Path(value)
+    if path.exists() and path.is_file():
+        loaded = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
+        if not isinstance(loaded, dict):
+            raise typer.BadParameter('workflow file must contain a YAML mapping.')
+        if loaded.get('version') != 1:
+            raise typer.BadParameter('workflow file version must be 1.')
+        if not loaded.get('pack'):
+            raise typer.BadParameter('workflow file must define pack.')
+        get_task_pack(str(loaded['pack']))
+        return loaded
+    get_task_pack(value)
+    return {'version': 1, 'name': value, 'pack': value, 'context': None, 'approval_mode': 'hybrid', 'bundle_on_completion': False}
+
+
 def _print_workflow_payload(payload: dict[str, Any], output_format: str) -> None:
     if output_format == 'json':
         console.print_json(json.dumps(payload, ensure_ascii=False))
@@ -341,6 +425,9 @@ def _print_workflow_payload(payload: dict[str, Any], output_format: str) -> None
     if isinstance(result, dict):
         table.add_row('run_id', str(result.get('run_id') or '-'))
         table.add_row('status', str(result.get('status') or '-'))
+    bundle = payload.get('bundle')
+    if isinstance(bundle, dict):
+        table.add_row('bundle', str(bundle.get('output_dir') or '-'))
     table.add_row('next_commands', '\n'.join(str(item) for item in payload.get('next_commands', [])))
     console.print(table)
     if payload.get('dry_run'):
@@ -358,10 +445,12 @@ def _browser_plan_command(
     output_format: str,
 ) -> None:
     browser_context = _browser_context(kind, url, context)
-    prompt = render_task_prompt('browser-qa', browser_context)
+    task_pack = 'browser-audit' if kind == 'audit' else 'browser-qa'
+    prompt = render_task_prompt(task_pack, browser_context)
     payload: dict[str, Any] = {
         'kind': kind,
         'url': url,
+        'pack': task_pack,
         'mode': 'run' if run else 'plan_only',
         'doctor': browser_doctor(config),
         'prompt': prompt,
@@ -392,12 +481,18 @@ def _browser_plan_command(
 
 
 def _browser_context(kind: str, url: str, context: str | None) -> str:
-    objective = (
-        'Open the page, collect a snapshot/accessibility-tree first, verify title and visible readiness, '
-        'then record artifacts and blocked follow-up actions.'
-        if kind == 'smoke'
-        else 'Collect a Playwright MCP snapshot or equivalent accessibility-tree evidence before screenshots, then summarize notable page structure.'
-    )
+    if kind == 'smoke':
+        objective = (
+            'Open the page, collect a snapshot/accessibility-tree first, verify title and visible readiness, '
+            'then record artifacts and blocked follow-up actions.'
+        )
+    elif kind == 'audit':
+        objective = (
+            'Collect Playwright MCP snapshot/accessibility-tree evidence first, then audit title, meta description, canonical signals, '
+            'heading hierarchy, visible content, internal and external links, basic accessibility risks, and page-quality gaps.'
+        )
+    else:
+        objective = 'Collect a Playwright MCP snapshot or equivalent accessibility-tree evidence before screenshots, then summarize notable page structure.'
     extra = context or 'No additional context provided.'
     return f'URL: {url}\nObjective: {objective}\nAdditional context: {extra}'
 
@@ -429,3 +524,7 @@ def _print_browser_payload(payload: dict[str, Any], output_format: str, *, title
         table.add_row('severity', str(triage.get('severity') or '-'))
     table.add_row('next_commands', '\n'.join(str(item) for item in payload.get('next_commands', [])))
     console.print(table)
+
+
+def _safe_token(value: str) -> str:
+    return ''.join(ch if ch.isalnum() or ch in {'-', '_'} else '-' for ch in value.lower()) or 'unknown'

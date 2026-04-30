@@ -18,6 +18,8 @@ from agent_common.models import HumanLoopMode, RunContext
 from agent_common.version import runtime_version
 from agent_protocols import resolve_protocol
 from agent_runtime import EasyAgentRuntime, build_runtime
+from agent_runtime.bundles import write_run_bundle
+from agent_runtime.connectors import browser_artifacts
 from agent_runtime.dashboard import dashboard_html, dashboard_payload
 from agent_runtime.diagnostics import (
     build_fix_package,
@@ -292,6 +294,45 @@ def triage_run_command(
     console.print(table)
     if payload['evidence']:
         console.print_json(json.dumps({'evidence': payload['evidence']}, ensure_ascii=False))
+
+
+@runs_app.command('bundle')
+def bundle_run_command(
+    run_id: str = typer.Argument(..., help='Existing run id.'),
+    config: str = typer.Option('easy-agent.yml', '-c', '--config'),
+    output: str | None = typer.Option(None, '-o', '--output', help='Output directory for the evidence bundle.'),
+    artifact_limit: int = typer.Option(50, '--artifact-limit', min=0, max=500, help='Maximum browser artifacts to copy.'),
+    no_browser_artifacts: bool = typer.Option(False, '--no-browser-artifacts', help='Do not copy browser artifacts into the bundle.'),
+    force: bool = typer.Option(False, '--force', help='Allow writing into a non-empty bundle directory.'),
+    output_format: str = typer.Option('pretty', '--format', help='Output format: pretty or json.'),
+) -> None:
+    runtime = build_runtime(config)
+    try:
+        bundle = write_run_bundle(
+            runtime.store,
+            run_id,
+            Path(output) if output else Path(f'run-bundle-{_html_token(run_id)}'),
+            browser_payload=browser_artifacts(config, limit=artifact_limit),
+            artifact_limit=artifact_limit,
+            copy_browser_artifacts=not no_browser_artifacts,
+            force=force,
+        )
+    finally:
+        asyncio.run(runtime.aclose())
+    if output_format == 'json':
+        console.print_json(json.dumps(bundle, ensure_ascii=False, default=str))
+        return
+    if output_format != 'pretty':
+        raise typer.BadParameter('format must be pretty or json')
+    table = Table(title=f'run bundle: {run_id}')
+    table.add_column('Field', style='cyan')
+    table.add_column('Value', style='green')
+    table.add_row('Mode', str(bundle['mode']))
+    table.add_row('Output', str(bundle['output_dir']))
+    table.add_row('Task Pack', str(bundle.get('selected_task_pack') or '-'))
+    table.add_row('Files', '\n'.join(str(item) for item in bundle['files']))
+    table.add_row('Copied Browser Artifacts', str(len(bundle.get('copied_browser_artifacts', []))))
+    console.print(table)
 
 
 @traces_app.command('export')

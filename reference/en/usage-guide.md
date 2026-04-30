@@ -76,10 +76,13 @@ uv run easy-agent connectors test browser -c easy-agent.yml
 uv run easy-agent browser doctor -c easy-agent.yml
 uv run easy-agent browser smoke https://example.com -c easy-agent.yml
 uv run easy-agent browser snapshot https://example.com -c easy-agent.yml
+uv run easy-agent browser audit https://example.com -c easy-agent.yml
 uv run easy-agent browser report <run_id> -c easy-agent.yml
 uv run easy-agent browser artifacts -c easy-agent.yml
 uv run easy-agent workflow list
+uv run easy-agent workflow init browser-audit --output workflow.yml --context "Audit the home page"
 uv run easy-agent workflow show browser-qa
+uv run easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
 uv run easy-agent workflow run browser-qa -c easy-agent.yml --dry-run --context "Check the home page"
 uv run easy-agent task list
 uv run easy-agent task show repo-review
@@ -132,7 +135,7 @@ Use the `mock` provider when you want to verify the runtime, tools, storage, and
 - `template create release-agent <target-dir>` creates a release readiness and evidence-review starter.
 - `config explain` summarizes model/provider choices, entrypoint type, agents, tools, teams, harnesses, MCP, storage, executors, federation, eval settings, and required environment variables without printing secret values.
 - `config doctor` performs static risk checks without starting model clients or MCP servers. It reports Python baseline drift, missing live env vars, missing local tools, MCP roots/auth gaps, federation auth gaps, workbench executor readiness, human-loop coverage, storage portability, and eval credential readiness.
-- Generated templates include a local README, a minimal `.env.local.example`, and a mock-first smoke command path. Template smoke starts with `config doctor`, then runs a short task and exports an HTML trace for the new run id.
+- Generated templates include a local README, a minimal `.env.local.example`, a `workflow.yml` file, and a mock-first smoke command path. Template README files now use the same section shape: Run, Recommended Workflow, Smoke, Diagnostics, and Next Steps. Template smoke starts with `config doctor`, then runs a short task and exports an HTML trace for the new run id.
 
 Use `--provider deepseek` only after `DEEPSEEK_API_KEY` is present in the environment.
 
@@ -145,6 +148,7 @@ Durable run inspection now has two layers:
 - `runs explain <run_id>` classifies common failure causes such as missing provider credentials, schema validation failures, guardrail blocks, MCP failures, iteration loops, and known Windows cleanup warnings.
 - `runs triage <run_id>` wraps `runs explain` and the repair-package classifier into one advice-only operator view. It returns severity, actionability, selected task pack, approval/browser flags, retry advice, evidence count, and next commands without mutating files or rerunning the agent.
 - `runs fix <run_id>` creates an advice-only repair package. It reuses the stored run explanation, selects a built-in task pack such as `bug-fix`, `release-check`, or `browser-qa`, lists safe next commands, and can write JSON, Markdown, or standalone HTML without mutating files or rerunning the agent.
+- `runs bundle <run_id>` writes an advice-only evidence directory with run summary, triage JSON, fix Markdown/HTML, trace-tree JSON/HTML, browser artifact inventory, copied browser artifacts when available, and a local README. It is designed for handoff/debugging rather than automatic remediation.
 - `traces export <run_id>` returns a structured trace tree by default.
 - `traces export <run_id> --raw` returns the historical raw trace payload.
 - `traces export <run_id> --html --output trace.html` writes a standalone HTML trace viewer for the structured tree, including summary cards, status/error highlighting, span-kind filters, text search, and the raw JSON payload.
@@ -164,7 +168,7 @@ If a report file is absent, the command marks that surface as `missing` and stil
 
 Use `report latest --html --output report.html` when the terminal table is too dense. The exported file is standalone and includes the same benchmark, public-eval, real-network, recent-run, and raw JSON evidence.
 
-Use `dashboard -c easy-agent.yml --output dashboard.html` for a broader static local dashboard that combines latest reports, report trend, connector readiness, suggested next steps, failed or waiting runs, pending approvals, browser readiness, browser artifacts, and raw JSON into one read-only HTML file.
+Use `dashboard -c easy-agent.yml --output dashboard.html` for a broader static local dashboard that combines latest reports, report trend, connector readiness, suggested next steps, workflow recommendations, template recommendations, failed or waiting runs, pending approvals, browser readiness, browser artifacts, and raw JSON into one read-only HTML file.
 
 `report trend` compares local report artifacts in a directory and shows the latest score, previous score, and score delta for benchmark, public-eval, and real-network reports. Use `--html --output trend.html` for a standalone trend page.
 
@@ -179,14 +183,15 @@ Trace-tree spans are derived from the existing runtime event envelope and includ
 - `browser doctor` prints a browser-specific static readiness report for Playwright MCP command shape, headless/isolated mode, artifact directory, approval mode, `npx` availability, and MCP server name collisions.
 - `browser smoke <url>` builds a browser QA plan for a target URL and checks Playwright MCP readiness. By default it is plan-only; pass `--run` to send the generated MCP-first prompt through the configured runtime.
 - `browser snapshot <url>` builds a snapshot-first browser plan that asks for Playwright MCP snapshot or accessibility-tree evidence before screenshots. By default it is plan-only; pass `--run` for live runtime execution.
+- `browser audit <url>` builds a page-quality and SEO audit plan that checks title, meta description, canonical signals, headings, visible content, links, accessibility basics, and artifacts from Playwright MCP evidence. By default it is plan-only; pass `--run` for live runtime execution.
 - `browser report <run_id>` combines run triage, browser doctor, and browser artifact evidence for a browser-related run.
 - `browser artifacts` lists the current browser artifact directory without starting Playwright MCP. It classifies screenshots, snapshots, videos, archives, network captures, logs, and other files so browser failures can be inspected before reruns.
-- `workflow list|show|run` exposes task packs as guided workflow packs. `workflow run --dry-run` prints the prompt, acceptance criteria, preflight checks, and next commands before any model-backed execution.
+- `workflow list|show|init|run` exposes task packs as guided workflow packs. `workflow init <pack> --output workflow.yml` writes a minimal versioned workflow file with `pack`, `context`, `approval_mode`, and `bundle_on_completion`. `workflow run workflow.yml --dry-run` prints the prompt, acceptance criteria, preflight checks, and next commands before any model-backed execution.
 - `task list` shows built-in task packs.
 - `task show <pack>` prints the prompt template, recommended scenario, and acceptance criteria.
 - `task run <pack>` renders and runs the task through the configured entrypoint. Use `--dry-run` to inspect the prompt before execution.
 
-Built-in task packs currently include `repo-review`, `bug-fix`, `docs-refresh`, `release-check`, `data-summary`, `federation-loopback-demo`, `browser-qa`, `browser-research`, and `browser-form-check`.
+Built-in task packs currently include `repo-review`, `bug-fix`, `docs-refresh`, `release-check`, `data-summary`, `federation-loopback-demo`, `browser-qa`, `browser-research`, `browser-form-check`, and `browser-audit`.
 
 ## Python Facade
 

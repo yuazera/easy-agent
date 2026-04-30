@@ -143,6 +143,22 @@ _TASK_PACKS: dict[str, TaskPack] = {
             'Approval-gated browser actions remain explicit in the report.',
         ],
     ),
+    'browser-audit': TaskPack(
+        name='browser-audit',
+        description='Audit a page for SEO, accessibility, page structure, link quality, and browser evidence gaps.',
+        recommended_scenario='seo-agent',
+        prompt_template=(
+            'Audit this page through the configured Playwright MCP browser tools. Start with browser connector readiness, '
+            'then collect snapshot/accessibility-tree evidence before screenshots. Check title, meta description, canonical signals, '
+            'heading structure, visible content, internal/external links, basic accessibility signals, and artifact paths. '
+            'Separate observed evidence, risks, and prioritized fixes.\n\nBrowser audit context:\n{context}'
+        ),
+        acceptance_criteria=[
+            'Title, metadata, headings, links, and visible content are checked from browser evidence.',
+            'Accessibility and SEO risks are separated from confirmed defects.',
+            'Artifacts, traces, and safe follow-up commands are named.',
+        ],
+    ),
 }
 
 

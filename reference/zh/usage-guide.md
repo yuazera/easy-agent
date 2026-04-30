@@ -76,10 +76,13 @@ uv run easy-agent connectors test browser -c easy-agent.yml
 uv run easy-agent browser doctor -c easy-agent.yml
 uv run easy-agent browser smoke https://example.com -c easy-agent.yml
 uv run easy-agent browser snapshot https://example.com -c easy-agent.yml
+uv run easy-agent browser audit https://example.com -c easy-agent.yml
 uv run easy-agent browser report <run_id> -c easy-agent.yml
 uv run easy-agent browser artifacts -c easy-agent.yml
 uv run easy-agent workflow list
+uv run easy-agent workflow init browser-audit --output workflow.yml --context "Audit the home page"
 uv run easy-agent workflow show browser-qa
+uv run easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
 uv run easy-agent workflow run browser-qa -c easy-agent.yml --dry-run --context "Check the home page"
 uv run easy-agent task list
 uv run easy-agent task show repo-review
@@ -132,7 +135,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `template create release-agent <target-dir>` 创建面向 release readiness 与 evidence review 的 starter。
 - `config explain` 会汇总 model/provider、entrypoint type、agents、tools、teams、harnesses、MCP、storage、executors、federation、eval settings 与 required environment variables，但不会打印 secret 值。
 - `config doctor` 做静态风险检查，不启动 model client，也不启动 MCP server。它会报告 Python baseline drift、缺失的 live env、缺失的本地工具、MCP roots/auth 缺口、federation auth 缺口、workbench executor readiness、human-loop 覆盖、storage 可移植性与 eval 凭据状态。
-- 生成的模板会带本地 README、最小 `.env.local.example` 与 mock-first smoke 命令路径。模板 smoke 从 `config doctor` 开始，再运行一个短任务，并为新 run id 导出 HTML trace。
+- 生成的模板会带本地 README、最小 `.env.local.example`、`workflow.yml` 与 mock-first smoke 命令路径。模板 README 统一使用 Run、Recommended Workflow、Smoke、Diagnostics、Next Steps 章节。模板 smoke 从 `config doctor` 开始，再运行一个短任务，并为新 run id 导出 HTML trace。
 
 只有在环境变量里已经有 `DEEPSEEK_API_KEY` 时，才使用 `--provider deepseek`。
 
@@ -145,6 +148,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 - `runs explain <run_id>` 会归类常见失败原因，包括 provider 凭据缺失、schema validation failure、guardrail block、MCP failure、iteration loop，以及 Windows cleanup warning。
 - `runs triage <run_id>` 会把 `runs explain` 与 repair-package classifier 包成一个 advice-only operator view，输出 severity、actionability、selected task pack、approval/browser flags、retry advice、evidence count 与 next commands；它不会修改文件，也不会重新运行 agent。
 - `runs fix <run_id>` 会生成 advice-only 修复包。它复用已存储的 run explanation，自动选择 `bug-fix`、`release-check` 或 `browser-qa` 等内置 task pack，列出安全下一步命令，并可以输出 JSON、Markdown 或单文件 HTML；该命令不会修改文件，也不会重新运行 agent。
+- `runs bundle <run_id>` 会写出 advice-only evidence 目录，包含 run summary、triage JSON、fix Markdown/HTML、trace-tree JSON/HTML、browser artifact inventory、可用时复制的 browser artifacts，以及本地 README。它用于 handoff/debugging，不做自动修复。
 - `traces export <run_id>` 默认返回结构化 trace tree。
 - `traces export <run_id> --raw` 返回历史 raw trace payload。
 - `traces export <run_id> --html --output trace.html` 会为 structured tree 写出单文件 HTML trace viewer，包含 summary cards、status/error highlighting、span-kind filters、文本搜索与 raw JSON payload。
@@ -164,7 +168,7 @@ uv run easy-agent mcp prompts get <server> <prompt-name> --arguments '{"topic":"
 
 当终端表格太密时，可以使用 `report latest --html --output report.html`。导出的文件是独立 HTML，包含同一组 benchmark、public-eval、real-network、recent-run 与 raw JSON 证据。
 
-如果想要更完整的本地静态面板，可以使用 `dashboard -c easy-agent.yml --output dashboard.html`。它会把 latest reports、report trend、connector readiness、suggested next steps、failed/waiting runs、pending approvals、browser readiness、browser artifacts 与 raw JSON 放到一个只读 HTML 文件里。
+如果想要更完整的本地静态面板，可以使用 `dashboard -c easy-agent.yml --output dashboard.html`。它会把 latest reports、report trend、connector readiness、suggested next steps、workflow recommendations、template recommendations、failed/waiting runs、pending approvals、browser readiness、browser artifacts 与 raw JSON 放到一个只读 HTML 文件里。
 
 `report trend` 会比较某个目录下的本地 report artifacts，并展示 benchmark、public-eval、real-network 的 latest score、previous score 与 score delta。使用 `--html --output trend.html` 可以生成单文件趋势页。
 
@@ -179,14 +183,15 @@ Trace-tree span 从现有 runtime event envelope 派生，包含稳定的 `span_
 - `browser doctor` 输出 browser-specific 静态就绪报告，覆盖 Playwright MCP command shape、headless/isolated mode、artifact directory、approval mode、`npx` 可用性与 MCP server name collision。
 - `browser smoke <url>` 为目标 URL 生成 browser QA plan 并检查 Playwright MCP readiness。默认只是 plan-only；显式传 `--run` 才会把生成的 MCP-first prompt 交给配置里的 runtime 执行。
 - `browser snapshot <url>` 生成 snapshot-first browser plan，要求优先收集 Playwright MCP snapshot 或 accessibility-tree evidence，再考虑截图。默认只是 plan-only；显式传 `--run` 才执行 live runtime。
+- `browser audit <url>` 会生成 page-quality 与 SEO audit plan，从 Playwright MCP evidence 检查 title、meta description、canonical signals、heading、visible content、links、基础 accessibility 与 artifacts。默认只是 plan-only；传入 `--run` 才会执行。
 - `browser report <run_id>` 会把 run triage、browser doctor 和 browser artifacts 合成一个 browser-related run 的证据视图。
 - `browser artifacts` 只扫描当前 browser artifact directory，不启动 Playwright MCP；它会把截图、snapshot、video、archive、network capture、log 和其他文件分类，方便在 rerun 前检查 browser failure 证据。
-- `workflow list|show|run` 把 task packs 暴露成 guided workflow packs。`workflow run --dry-run` 会在任何 model-backed execution 之前输出 prompt、acceptance criteria、preflight checks 与 next commands。
+- `workflow list|show|init|run` 把 task packs 暴露成 guided workflow packs。`workflow init <pack> --output workflow.yml` 会写出最小 versioned workflow 文件，包含 `pack`、`context`、`approval_mode` 与 `bundle_on_completion`。`workflow run workflow.yml --dry-run` 会在任何 model-backed execution 之前输出 prompt、acceptance criteria、preflight checks 与 next commands。
 - `task list` 展示内置 task packs。
 - `task show <pack>` 输出 prompt template、recommended scenario 与 acceptance criteria。
 - `task run <pack>` 会把任务渲染后交给当前配置的 entrypoint。使用 `--dry-run` 可先检查 prompt。
 
-当前内置 task packs 包括 `repo-review`、`bug-fix`、`docs-refresh`、`release-check`、`data-summary`、`federation-loopback-demo`、`browser-qa`、`browser-research` 与 `browser-form-check`。
+当前内置 task packs 包括 `repo-review`、`bug-fix`、`docs-refresh`、`release-check`、`data-summary`、`federation-loopback-demo`、`browser-qa`、`browser-research`、`browser-form-check` 与 `browser-audit`。
 
 ## Python Facade
 

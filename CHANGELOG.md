@@ -24,6 +24,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `easy-agent config validate|explain|doctor`
   - `easy-agent runs explain`
   - `easy-agent runs fix`
+  - `easy-agent runs bundle`
 - Added standalone HTML trace export through `easy-agent traces export <run_id> --html --output <path>`.
 - Added `easy-agent traces open <run_id>` for one-command local HTML trace inspection.
 - Added `easy-agent report latest` to summarize local benchmark, public-eval, real-network, and recent-run evidence.
@@ -39,16 +40,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   - `easy-agent browser doctor`
   - `easy-agent browser artifacts`
 - Added workflow and triage operator surfaces:
-  - `easy-agent workflow list|show|run`
+  - `easy-agent workflow list|show|init|run`
   - `easy-agent runs triage`
 - Added MCP-first browser helper surfaces:
   - `easy-agent browser smoke`
   - `easy-agent browser snapshot`
+  - `easy-agent browser audit`
   - `easy-agent browser report`
 - Added browser-specific task packs:
   - `browser-qa`
   - `browser-research`
   - `browser-form-check`
+  - `browser-audit`
 - Added standalone HTML run repair packages through `easy-agent runs fix <run_id> --format html --output <path>`.
 - Added local skill and plugin operator surfaces:
   - `easy-agent skills catalog list|install`
@@ -111,6 +114,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Enhanced run diagnostics so Playwright MCP and browser-tool failures classify as `browser_mcp`, select `browser-qa`, and suggest browser doctor, artifact, connector, trace, and repair commands.
 - Enhanced the static dashboard with failed/waiting/interrupted run attention rows, pending approval rows, browser readiness, browser artifacts, and generated failure-to-fix commands.
 - Enhanced the static dashboard with suggested next steps that point operators to triage, approvals, browser checks, connector checks, and report refresh commands.
+- Enhanced the static dashboard with workflow and template recommendations so operators can move from evidence to a concrete `workflow.yml` or starter scenario.
+- Extended workflow packs with portable versioned YAML files and optional bundle-on-completion evidence export.
+- Standardized generated starter template README files around Run, Recommended Workflow, Smoke, Diagnostics, and Next Steps, and added a starter `workflow.yml` to every template.
+- Added advice-only run bundles that export run summary, triage JSON, fix Markdown/HTML, trace tree JSON/HTML, browser artifact inventory, copied browser artifacts, and a local README.
+- Added browser page-quality audit planning for SEO/accessibility-oriented checks while keeping execution Playwright MCP-first and plan-only by default.
 - Extended run diagnostics with advice-only fix packages that select a task pack and list safe follow-up commands without mutating files or rerunning agents.
 - Updated the bilingual README pair and reference docs to keep scores while adding scenario-proof framing for resume, approvals, MCP restart, provider schema repair, federation retry, and workbench snapshot restore.
 - Extended the CLI integration surface with `easy-agent integration real-network`.

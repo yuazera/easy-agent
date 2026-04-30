@@ -51,7 +51,10 @@ def test_template_commands_list_and_create(tmp_path: Path) -> None:
     assert 'content-pipeline-agent' in listed.output
     assert created.exit_code == 0
     assert (destination / 'easy-agent.yml').exists()
+    assert (destination / 'workflow.yml').exists()
     assert 'easy-agent config doctor' in (destination / 'README.md').read_text(encoding='utf-8')
+    assert 'Recommended Workflow' in (destination / 'README.md').read_text(encoding='utf-8')
+    assert 'runs bundle <run_id>' in (destination / 'README.md').read_text(encoding='utf-8')
     assert 'DEEPSEEK_API_KEY=<SECRET>' in (destination / '.env.local.example').read_text(encoding='utf-8')
 
 
@@ -93,6 +96,7 @@ def test_all_templates_create_valid_configs(tmp_path: Path) -> None:
         assert result.exit_code == 0
         load_config(destination / 'easy-agent.yml')
         assert (destination / 'README.md').exists()
+        assert (destination / 'workflow.yml').exists()
         assert (destination / '.env.local.example').exists()
 
 
@@ -110,6 +114,7 @@ def test_browser_template_enables_playwright_mcp_browser(tmp_path: Path) -> None
     assert config.browser.require_approval is True
     assert 'browser:' in (destination / 'easy-agent.yml').read_text(encoding='utf-8')
     assert 'easy-agent connectors test browser' in (destination / 'README.md').read_text(encoding='utf-8')
+    assert 'browser-audit' in (destination / 'workflow.yml').read_text(encoding='utf-8')
 
 
 def test_new_command_creates_business_scenarios(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:

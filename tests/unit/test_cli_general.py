@@ -439,6 +439,22 @@ storage:
     assert 'Recommended Commands' in html
     assert 'Task Prompt' in html
 
+    bundle_path = tmp_path / 'bundle'
+    bundle_result = CliRunner().invoke(
+        app,
+        ['runs', 'bundle', 'run_fix', '-c', str(config_path), '--output', str(bundle_path), '--format', 'json'],
+    )
+    assert bundle_result.exit_code == 0
+    assert '"mode": "advice_only"' in bundle_result.output
+    assert (bundle_path / 'run-summary.json').exists()
+    assert (bundle_path / 'triage.json').exists()
+    assert (bundle_path / 'fix.md').exists()
+    assert (bundle_path / 'fix.html').exists()
+    assert (bundle_path / 'trace-tree.json').exists()
+    assert (bundle_path / 'trace.html').exists()
+    assert (bundle_path / 'browser-artifacts.json').exists()
+    assert 'advice-only evidence package' in (bundle_path / 'README.md').read_text(encoding='utf-8')
+
 
 def test_runs_fix_classifies_browser_mcp_failure(tmp_path: Path) -> None:
     config_path = tmp_path / 'easy-agent.yml'
@@ -517,7 +533,10 @@ storage:
     assert 'Needs Attention' in html
     assert 'Approvals' in html
     assert 'Suggested Next Steps' in html
+    assert 'Workflow Recommendations' in html
+    assert 'Template Recommendations' in html
     assert 'Browser' in html
     assert 'run_failed_dash' in html
     assert 'runs triage run_failed_dash' in html
     assert 'runs fix run_failed_dash' in html
+    assert 'workflow init bug-fix' in html

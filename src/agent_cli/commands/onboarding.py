@@ -616,17 +616,27 @@ def _templates() -> dict[str, dict[str, Any]]:
 
 def _template_files(name: str, description: str, config: str) -> dict[str, str]:
     env_example = _template_env_example(name)
+    workflow_pack = _recommended_workflow_pack(name)
+    workflow_yaml = _template_workflow(name, workflow_pack)
     run_block = (
         dedent(
-            """
+            f"""
             ## Run
 
             ```bash
             easy-agent doctor -c easy-agent.yml
             easy-agent config explain -c easy-agent.yml
             easy-agent config doctor -c easy-agent.yml
+            easy-agent workflow show {workflow_pack}
             easy-agent connectors test browser -c easy-agent.yml
             easy-agent mcp list -c easy-agent.yml
+            ```
+
+            ## Recommended Workflow
+
+            ```bash
+            easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
+            easy-agent browser audit https://example.com -c easy-agent.yml
             ```
 
             ## Smoke
@@ -636,19 +646,41 @@ def _template_files(name: str, description: str, config: str) -> dict[str, str]:
             easy-agent connectors test browser -c easy-agent.yml
             easy-agent wizard --scenario browser-agent --target-dir browser-agent-smoke --skip-smoke
             ```
+
+            ## Diagnostics
+
+            ```bash
+            easy-agent dashboard -c easy-agent.yml --output dashboard.html
+            easy-agent browser artifacts -c easy-agent.yml
+            easy-agent runs list -c easy-agent.yml
+            ```
+
+            ## Next Steps
+
+            - Replace the placeholder URL in `workflow.yml` or pass `--context`.
+            - Run live browser workflows only after `connectors test browser` is green.
+            - Use `runs bundle <run_id>` after a failure to export a shareable evidence package.
             """
         ).strip()
         if name in _browser_scenario_templates()
         else dedent(
-            """
+            f"""
             ## Run
 
             ```bash
             easy-agent doctor -c easy-agent.yml
             easy-agent config explain -c easy-agent.yml
             easy-agent config doctor -c easy-agent.yml
+            easy-agent workflow show {workflow_pack}
             easy-agent run "Hello from the template" -c easy-agent.yml
             easy-agent runs list -c easy-agent.yml
+            ```
+
+            ## Recommended Workflow
+
+            ```bash
+            easy-agent workflow run workflow.yml -c easy-agent.yml --dry-run
+            easy-agent workflow run {workflow_pack} -c easy-agent.yml --dry-run --context "replace with your goal"
             ```
 
             ## Smoke
@@ -658,11 +690,26 @@ def _template_files(name: str, description: str, config: str) -> dict[str, str]:
             easy-agent run "Run the template smoke path once." -c easy-agent.yml
             easy-agent traces export <run_id> -c easy-agent.yml --html --output trace.html
             ```
+
+            ## Diagnostics
+
+            ```bash
+            easy-agent dashboard -c easy-agent.yml --output dashboard.html
+            easy-agent runs triage <run_id> -c easy-agent.yml
+            easy-agent runs bundle <run_id> -c easy-agent.yml --output run-bundle
+            ```
+
+            ## Next Steps
+
+            - Edit `workflow.yml` with the real task context.
+            - Keep the mock smoke path green before switching to live providers.
+            - Export a run bundle when you need to hand off trace, triage, and repair evidence.
             """
         ).strip()
     )
     return {
         'easy-agent.yml': config,
+        'workflow.yml': workflow_yaml,
         'README.md': dedent(
             f"""
             # {name}
@@ -674,6 +721,49 @@ def _template_files(name: str, description: str, config: str) -> dict[str, str]:
         ).lstrip(),
         '.env.local.example': env_example,
     }
+
+
+def _recommended_workflow_pack(name: str) -> str:
+    mapping = {
+        'coding-agent': 'bug-fix',
+        'workbench-coding-agent': 'bug-fix',
+        'research-agent': 'browser-research',
+        'data-agent': 'data-summary',
+        'ops-agent': 'release-check',
+        'browser-agent': 'browser-audit',
+        'web-monitor-agent': 'browser-qa',
+        'seo-agent': 'browser-audit',
+        'competitor-research-agent': 'browser-research',
+        'meeting-notes-agent': 'docs-refresh',
+        'content-pipeline-agent': 'docs-refresh',
+        'customer-support-agent': 'docs-refresh',
+        'sales-agent': 'docs-refresh',
+        'document-agent': 'docs-refresh',
+        'qa-agent': 'release-check',
+        'release-agent': 'release-check',
+        'eval-smoke': 'release-check',
+        'federation-loopback': 'federation-loopback-demo',
+    }
+    if name in _browser_scenario_templates():
+        return mapping.get(name, 'browser-audit')
+    return mapping.get(name, 'repo-review')
+
+
+def _template_workflow(name: str, pack: str) -> str:
+    context = (
+        'URL: https://example.com\nGoal: replace this with the page or workflow to inspect.'
+        if name in _browser_scenario_templates()
+        else f'Starter scenario: {name}. Replace this with the real task context.'
+    )
+    payload = {
+        'version': 1,
+        'name': name,
+        'pack': pack,
+        'context': context,
+        'approval_mode': 'hybrid',
+        'bundle_on_completion': False,
+    }
+    return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)
 
 
 def _browser_scenario_templates() -> set[str]:
